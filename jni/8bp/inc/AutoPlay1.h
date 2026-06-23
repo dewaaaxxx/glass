@@ -745,20 +745,20 @@ namespace AutoPlay {
         // 2. bAutoPlaying = play/pause button on screen (user pressed play)
         // Previously only bAutoPlay was checked, so the play/pause button had
         // no effect on whether scanning/shooting actually happened.
-        if (!persistent_bool[O("bAutoPlay")] || !bAutoPlaying || !sharedGameManager.mStateManager().isPlayerTurn()) {
+       /* if (!persistent_bool[O("bAutoPlay")] || !bAutoPlaying || !sharedGameManager.mStateManager().isPlayerTurn()) {
             state = IDLE;
             return;
-        }
+        }*/
         
         buttonClicker.Update();
         DrawToggleButton();
 
         if (isAnimationActive()) return;
 
-        /*if (!bAutoPlaying || !sharedGameManager.mStateManager().isPlayerTurn()) {
+        if (!bAutoPlaying || !sharedGameManager.mStateManager().isPlayerTurn()) {
             state = IDLE;
             return;
-        }*/
+        }
 
         if (state == IDLE) {
             state = SCANNING;
