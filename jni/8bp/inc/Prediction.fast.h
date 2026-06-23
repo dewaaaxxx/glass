@@ -174,15 +174,19 @@ void Prediction::initBalls() {
         ball.predictedPosition = ball.initialPosition;
         ball.velocity.nullify();
         ball.spin.nullify();
-        if (!ball.positions.empty()) ball.positions.clear();
-        ball.positions.reserve(20);
+        if (!ball.positions.empty()) {
+            ball.positions.clear();
+            ball.positions.shrink_to_fit(); // release memory every simulation cycle
+        }
+        ball.positions.reserve(64);
         ball.positions.push_back(ball.initialPosition);
     }
 }
 
 void Prediction::initCueBall(double shotAngle, double shotPower, const Point2D &shotSpin) {
-    double angleCos = round(cos(shotAngle) * 10000.0) / 10000.0;
-    double angleSin = round(sin(shotAngle) * 10000.0) / 10000.0;
+    // Removed aggressive rounding (was 4 decimal places = ~0.006 degree error compounded over distance)
+    double angleCos = cos(shotAngle);
+    double angleSin = sin(shotAngle);
     Ball &cueBall = this->guiData.balls[0];
     cueBall.velocity.x = shotPower * angleCos;
     cueBall.velocity.y = shotPower * angleSin;
@@ -221,7 +225,8 @@ void Prediction::determineBallsPositions() {
                 this->handleCollision();
                 if (this->guiData.collision.firstHitBall != nullptr && this->m_candidate.idx != -1) {
                     this->firstHitIsTarget = (this->guiData.collision.firstHitBall->index == this->m_candidate.idx);
-                    if (!this->firstHitIsTarget) return;
+                    // Don't early-return: let simulation complete so pocket result is known.
+                    // Caller checks firstHitIsTarget after determineShotResult returns.
                 }
             }
             time -= time2;
