@@ -21,7 +21,7 @@ LOCAL_MODULE := rary
 LOCAL_CFLAGS := -Wno-error=format-security -fvisibility=hidden -ffunction-sections -fdata-sections -w
 LOCAL_CFLAGS += -fno-exceptions -fpermissive
 LOCAL_CFLAGS += -rdynamic -funwind-tables
-LOCAL_CPPFLAGS := -std=c++23 -Wno-error=format-security -fvisibility=hidden -ffunction-sections -fdata-sections -w -Werror -s
+LOCAL_CPPFLAGS := -std=c++20 -Wno-error=format-security -fvisibility=hidden -ffunction-sections -fdata-sections -w -Werror -s
 LOCAL_CPPFLAGS += -Wno-error=c++11-narrowing -fms-extensions -fno-exceptions -fexceptions -fpermissive
 LOCAL_CPPFLAGS += -rdynamic -funwind-tables -fno-omit-frame-pointer
 LOCAL_LDFLAGS += -Wl,--strip-all
