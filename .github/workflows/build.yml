@@ -34,14 +34,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/ndk
-          key: ndk-r23c-${{ runner.os }}
+          key: ndk-r26d-${{ runner.os }}
 
-      - name: Download Android NDK r23c
+      - name: Download Android NDK r26d
         if: steps.cache-ndk.outputs.cache-hit != 'true'
         run: |
           mkdir -p ${{ runner.temp }}/ndk
           curl -fsSL \
-            "https://dl.google.com/android/repository/android-ndk-r23c-linux.zip" \
+            "https://dl.google.com/android/repository/android-ndk-r26d-linux.zip" \
             -o /tmp/ndk.zip
           unzip -q /tmp/ndk.zip -d ${{ runner.temp }}/ndk
           rm /tmp/ndk.zip
@@ -49,7 +49,7 @@ jobs:
 
       - name: Verify NDK integrity
         run: |
-          NDK_DIR="${{ runner.temp }}/ndk/android-ndk-r23c"
+          NDK_DIR="${{ runner.temp }}/ndk/android-ndk-r26d"
           if [ ! -f "$NDK_DIR/ndk-build" ]; then
             echo "ERROR: ndk-build not found — cache may be corrupt, deleting..."
             rm -rf "${{ runner.temp }}/ndk"
@@ -74,12 +74,13 @@ jobs:
 
       - name: Build library.so
         run: |
-          export NDK="${{ runner.temp }}/ndk/android-ndk-r23c"
+          export NDK="${{ runner.temp }}/ndk/android-ndk-r26d"
           cd jni
           $NDK/ndk-build \
             NDK_PROJECT_PATH=. \
             APP_BUILD_SCRIPT=Android.mk \
             NDK_APPLICATION_MK=Application.mk \
+            APP_CPPFLAGS="-std=c++20" \
             -j$(nproc) \
             V=1
           echo "Build complete."
