@@ -77,7 +77,7 @@ struct VisualCue : CCNode {
     }
     
     // 🎱 Utility: Get the internal normalized power value (0.0-1.0)
-    double getInternalPower() const {
+    double getInternalPower() {
         auto power = mPower();
         if (power < 0.0) return 0.0;
         if (power > 1.0) return 1.0;
