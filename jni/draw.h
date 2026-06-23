@@ -290,27 +290,85 @@ INLINE void DrawESP(ImDrawList* draw) {
         }
 
         if (persistent_bool[O("bESP_DrawPredictionLine")]) {
+            float predA = persistent_float["fPredAlpha"];
+            if (predA < 0.01f) predA = 1.0f;
+            auto getCol = [&](int idx) -> ImU32 {
+                ImVec4 v = colors[idx].Value;
+                v.w = predA;
+                return ColorConvertFloat4ToU32(v);
+            };
+
+            // Helper: draw a dotted/dashed line between two points
+            auto AddDottedLine = [&](ImVec2 a, ImVec2 b, ImU32 col, float thickness, float dotLen = 8.f, float gapLen = 8.f) {
+                float dx = b.x - a.x;
+                float dy = b.y - a.y;
+                float dist = sqrtf(dx * dx + dy * dy);
+                if (dist < 0.1f) return;
+                float nx = dx / dist, ny = dy / dist;
+                float t = 0.f;
+                bool drawing = true;
+                while (t < dist) {
+                    float segLen = drawing ? dotLen : gapLen;
+                    float end = t + segLen;
+                    if (end > dist) end = dist;
+                    if (drawing) {
+                        draw->AddLine(
+                            ImVec2(a.x + nx * t,   a.y + ny * t),
+                            ImVec2(a.x + nx * end, a.y + ny * end),
+                            col, thickness
+                        );
+                    }
+                    t = end;
+                    drawing = !drawing;
+                }
+            };
+
+            float lineThick = persistent_float["fLineThick"];
+
             for (int i = 0; i < gPrediction->guiData.ballsCount; i++) {
                 auto& ball = gPrediction->guiData.balls[i];
-
                 if (ball.initialPosition != ball.predictedPosition) {
                     ImVec2 lastPos{};
-                    for (int j = 1; j < ball.positions.size(); j++) {
+                    ImU32 col = getCol(i);
+                    // Stripe balls (index 9-15) use dotted line, solid/cue/8ball use solid line
+                    bool isDotted = (i >= 9 && i <= 15);
+                    for (int j = 1; j < (int)ball.positions.size(); j++) {
                         auto point = WorldToScreen(ball.positions[j]);
-                        if (lastPos.x || lastPos.y) draw->AddLine(lastPos, point, colors[i], 10.f);
+                        if (lastPos.x || lastPos.y) {
+                            if (isDotted)
+                                AddDottedLine(lastPos, point, col, lineThick);
+                            else
+                                draw->AddLine(lastPos, point, col, lineThick);
+                        }
                         lastPos = point;
                     }
                 }
             }
-        }
-
-        if (persistent_bool[O("bESP_DrawPredictionLine")]) {
             for (int i = 0; i < gPrediction->guiData.ballsCount; i++) {
                 auto& ball = gPrediction->guiData.balls[i];
-
                 if (ball.initialPosition != ball.predictedPosition) {
-                    draw->AddCircle(WorldToScreen(ball.initialPosition), 20, colors[i], 0, 6.f);
-                    draw->AddCircleFilled(WorldToScreen(ball.predictedPosition), 20, colors[i]);
+                    ImU32 col = getCol(i);
+                    bool isStripe = (i >= 9 && i <= 15);
+                    float circleR = 20.f;
+
+                    // Start circle (hollow)
+                    draw->AddCircle(WorldToScreen(ball.initialPosition), circleR, col, 0, 6.f);
+
+                    // End circle (filled)
+                    ImVec2 endPos = WorldToScreen(ball.predictedPosition);
+                    draw->AddCircleFilled(endPos, circleR, col);
+
+                    // Stripe balls: draw minus sign ( — ) inside end circle
+                    if (isStripe) {
+                        float minusHalfW = circleR * 0.55f;
+                        float minusThick = circleR * 0.28f;
+                        draw->AddLine(
+                            ImVec2(endPos.x - minusHalfW, endPos.y),
+                            ImVec2(endPos.x + minusHalfW, endPos.y),
+                            IM_COL32(255, 255, 255, 220),
+                            minusThick
+                        );
+                    }
                 }
             }
         }
@@ -386,6 +444,8 @@ static void DrawContentArea(float sidebarW, float winW, float winH) {
             need_save |= ToggleSwitch(O("Draw Prediction Lines"), &persistent_bool[O("bESP_DrawPredictionLine")]);
             need_save |= ToggleSwitch(O("Draw Pockets"), &persistent_bool[O("bESP_DrawPockets")]);
             need_save |= ToggleSwitch(O("Draw Shot State"), &persistent_bool[O("bESP_DrawPocketsShotState")]);
+            need_save |= Slider("##slt", "Line Thickness",
+                &persistent_float["fLineThick"], 0.5f, 8.0f, "%.1f px", 0);
             break;
         }
         

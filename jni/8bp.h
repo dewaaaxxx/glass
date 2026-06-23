@@ -16,6 +16,6 @@
 #include "8bp/inc/NumberUtils.h"
 #include "8bp/inc/Prediction.fast.h"
 // #include "8bp/inc/AutoAim.h"
-#include "8bp/inc/AutoPlay.h"
+#include "8bp/inc/AutoPlay1.h"
 #include "8bp/inc/AutoQueue.h"
 #include "8bp/inc/ScreenTable.h"
