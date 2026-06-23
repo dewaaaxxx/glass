@@ -1,0 +1,147 @@
+name: Build ARM64 Native Library
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'jni/**'
+      - 'tools/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build .so (arm64-v8a)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute JNI source SHA
+        id: sha
+        run: |
+          SHA=$(find jni -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+          echo "jni_sha=$SHA" >> $GITHUB_OUTPUT
+          echo "JNI source SHA: $SHA"
+
+      - name: Cache NDK download
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ndk
+          key: ndk-r25c-${{ runner.os }}
+
+      - name: Download Android NDK r25c
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ${{ runner.temp }}/ndk
+          curl -fsSL \
+            "https://dl.google.com/android/repository/android-ndk-r25c-linux.zip" \
+            -o /tmp/ndk.zip
+          unzip -q /tmp/ndk.zip -d ${{ runner.temp }}/ndk
+          rm /tmp/ndk.zip
+          echo "NDK extracted to ${{ runner.temp }}/ndk"
+
+      - name: Verify NDK integrity
+        run: |
+          NDK_DIR="${{ runner.temp }}/ndk/android-ndk-r25c"
+          if [ ! -f "$NDK_DIR/ndk-build" ]; then
+            echo "ERROR: ndk-build not found — cache may be corrupt, deleting..."
+            rm -rf "${{ runner.temp }}/ndk"
+            exit 1
+          fi
+          echo "NDK OK: $(ls $NDK_DIR/ndk-build)"
+
+      - name: Cache build outputs (keyed by JNI SHA)
+        id: cache-build
+        uses: actions/cache@v4
+        with:
+          path: jni/libs
+          key: so-arm64-${{ steps.sha.outputs.jni_sha }}
+          restore-keys: |
+            so-arm64-
+
+      - name: Clear stale build artifacts
+        run: |
+          rm -rf jni/obj
+          rm -rf jni/libs
+          echo "Cleared obj/ and libs/ before fresh build"
+
+      - name: Build library.so
+        run: |
+          export NDK="${{ runner.temp }}/ndk/android-ndk-r25c"
+          cd jni
+          $NDK/ndk-build \
+            NDK_PROJECT_PATH=. \
+            APP_BUILD_SCRIPT=Android.mk \
+            NDK_APPLICATION_MK=Application.mk \
+            -j$(nproc) \
+            V=1
+          echo "Build complete."
+          ls -lh libs/arm64-v8a/
+
+      - name: Verify .so output + print SHA256
+        run: |
+          SO="jni/libs/arm64-v8a/library.so"
+          if [ ! -f "$SO" ]; then
+            echo "ERROR: library.so not found!"
+            exit 1
+          fi
+          echo "=== library.so info ==="
+          ls -lh "$SO"
+          sha256sum "$SO"
+          file "$SO"
+          echo "=== ELF header ==="
+          readelf -h "$SO" | head -20
+
+      - name: Compile dump_elf (arm64 standalone tool)
+        run: |
+          NDK="${{ runner.temp }}/ndk/android-ndk-r25c"
+          CLANG="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+          SRC="tools/dump_elf/dump_elf.c"
+          OUT="tools/dump_elf/dump_elf"
+          if [ -f "$SRC" ] && [ -f "$CLANG" ]; then
+            echo "=== Compiling dump_elf for arm64 ==="
+            $CLANG -O2 -o "$OUT" "$SRC" \
+              -DANDROID -ffunction-sections -fdata-sections \
+              -Wl,--gc-sections
+            echo "=== Output ==="
+            ls -lh "$OUT"
+            file "$OUT"
+          else
+            echo "[SKIP] $SRC not found — skipping dump_elf compile"
+          fi
+
+      - name: Upload artifacts (library.so + dump tools)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CM-arm64-v8a-${{ github.sha }}
+          path: |
+            jni/libs/arm64-v8a/library.so
+            tools/dump_elf/dump_elf
+            tools/dump_8bp.sh
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload build summary
+        run: |
+          SO="jni/libs/arm64-v8a/library.so"
+          SHA256=$(sha256sum "$SO" | cut -d' ' -f1)
+          SIZE=$(stat -c%s "$SO")
+          echo "## ✅ Build Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Info | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| File | \`library.so\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Arch | arm64-v8a |" >> $GITHUB_STEP_SUMMARY
+          echo "| Size | ${SIZE} bytes |" >> $GITHUB_STEP_SUMMARY
+          echo "| SHA256 | \`${SHA256}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| JNI SHA | \`${{ steps.sha.outputs.jni_sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+
+          
