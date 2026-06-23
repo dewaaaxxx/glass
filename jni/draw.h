@@ -335,7 +335,7 @@ static void DrawSidebar(float sidebarW, float winH) {
     
     PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.75f, 1.0f, 1.0f));
     SetWindowFontScale(1.2f);
-    Text(O("GLASS"));
+    Text(O("CM"));
     SetWindowFontScale(1.0f);
     PopStyleColor();
     
@@ -546,7 +546,7 @@ static void DrawFloatingButton(ImGuiIO& io) {
         
         float textX = buttonPos.x + buttonSize + 12.0f;
         float textY = buttonPos.y + (totalHeight - 38.0f) * 0.5f;
-        dl->AddText(ImVec2(textX, textY), IM_COL32(70, 160, 255, 255), O("Glass"));
+        dl->AddText(ImVec2(textX, textY), IM_COL32(70, 160, 255, 255), O("Cm"));
         dl->AddText(ImVec2(textX, textY + 24.0f), IM_COL32(180, 180, 190, 255), O("Engine"));
         
         if (IsItemActive() && IsMouseDragging(0)) {
