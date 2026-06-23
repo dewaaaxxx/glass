@@ -440,12 +440,54 @@ static void DrawContentArea(float sidebarW, float winW, float winH) {
     
     switch (g_menu.currentTab) {
         case 0: {
+            
+            auto DrawSectionHdr0 = [&](const char* title) {
+                Dummy(ImVec2(0, 4));
+                TextColored(ImVec4(0.52f, 0.68f, 0.88f, 0.90f), "%s", title);
+                Dummy(ImVec2(0, 3));
+                ImVec2 lp = GetCursorScreenPos();
+                GetWindowDrawList()->AddLine(lp,
+                    ImVec2(lp.x + GetContentRegionAvail().x, lp.y),
+                    IM_COL32(45, 75, 120, 100), 1.0f);
+                Dummy(ImVec2(0, 7));
+            };
+        
             Dummy(ImVec2(0, 10));
             need_save |= ToggleSwitch(O("Draw Prediction Lines"), &persistent_bool[O("bESP_DrawPredictionLine")]);
             need_save |= ToggleSwitch(O("Draw Pockets"), &persistent_bool[O("bESP_DrawPockets")]);
             need_save |= ToggleSwitch(O("Draw Shot State"), &persistent_bool[O("bESP_DrawPocketsShotState")]);
-            need_save |= Slider("##slt", "Line Thickness",
-                &persistent_float["fLineThick"], 0.5f, 8.0f, "%.1f px", 0);
+            
+            
+            DrawSectionHdr0("Settings");
+
+            {
+                if (persistent_int[O("iLineThickness")] < 1) persistent_int[O("iLineThickness")] = 4;
+                PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
+                PushStyleVar(ImGuiStyleVar_GrabRounding, 10.0f);
+                PushStyleColor(ImGuiCol_FrameBg,          ImVec4(0.12f, 0.12f, 0.18f, 1.0f));
+                PushStyleColor(ImGuiCol_SliderGrab,       ImVec4(0.12f, 0.45f, 0.95f, 1.0f));
+                PushStyleColor(ImGuiCol_SliderGrabActive, ImVec4(0.20f, 0.55f, 1.00f, 1.0f));
+                float avail = GetContentRegionAvail().x;
+                // Label right-aligned
+                const char* lbl1 = "Line Thickness";
+                ImVec2 lsz1 = CalcTextSize(lbl1);
+                TextColored(ImVec4(0.55f, 0.65f, 0.80f, 1.0f), "%s", lbl1);
+                SameLine(avail - lsz1.x + 4.0f);
+                SetNextItemWidth(avail * 0.52f);
+                need_save |= SliderInt(O("##lineThick"), &persistent_int[O("iLineThickness")], 1, 10, "%d");
+                /*Dummy(ImVec2(0, 6));
+                int& menuSz = persistent_int[O("iMenuSizeOffset")];
+                const char* lbl2 = "Fix Menu Size";
+                TextColored(ImVec4(0.55f, 0.65f, 0.80f, 1.0f), "%s", lbl2);
+                ImVec2 lsz2 = CalcTextSize(lbl2);
+                SameLine(avail - lsz2.x + 4.0f);
+                SetNextItemWidth(avail * 0.52f);
+                bool changed = SliderInt(O("##menuSize"), &menuSz, -10, 10,
+                    menuSz == 0 ? O("Normal") : "%d");
+                need_save |= changed;*/
+                PopStyleColor(3);
+                PopStyleVar(2);
+            }
             break;
         }
         
