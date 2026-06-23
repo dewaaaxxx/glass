@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, master ]
     paths:
-      - 'jni/**'
+      - 'jni/**'  # <-- UBAH KE jni/** (karena source cuma jni)
       - 'tools/**'
       - '.github/workflows/build.yml'
   pull_request:
@@ -143,5 +143,3 @@ jobs:
           echo "| SHA256 | \`${SHA256}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| JNI SHA | \`${{ steps.sha.outputs.jni_sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-
-          
