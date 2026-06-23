@@ -2,17 +2,81 @@
 #include <fstream>
 #include <ctime>
 #include <iomanip>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
 #include <sstream>
 #include <random>
+#include <curl/curl.h>
+#include <sys/system_properties.h>
+#include <pthread.h>
 
 #include "include/obfuscate.h"
+#include "version.h"
 
-bool bValid = false;
+#ifndef LIB_VERSION
+#define LIB_VERSION "dev"
+#endif
+
+bool bValid = true;
+
+// ── Auto-update state ────────────────────────────────────────────────
+bool        g_UpdateDownloading = false;
+bool        g_UpdateReady       = false;
+std::string g_UpdateSavePath    = "";
+
+static size_t curlWriteFile(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    FILE* fp = (FILE*)userdata;
+    return fwrite(ptr, size, nmemb, fp);
+}
+
+static void* AutoUpdateThread(void* arg) {
+    std::string* urlPtr = (std::string*)arg;
+    std::string url = *urlPtr;
+    delete urlPtr;
+
+    std::string savePath = std::string("/data/data/") + PACKAGE_NAME + "/files/lyn4xp_update.so";
+
+    CURL* curl = curl_easy_init();
+    if (!curl) { g_UpdateDownloading = false; return nullptr; }
+
+    FILE* fp = fopen(savePath.c_str(), "wb");
+    if (!fp) { curl_easy_cleanup(curl); g_UpdateDownloading = false; return nullptr; }
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWriteFile);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 90L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+
+    CURLcode res = curl_easy_perform(curl);
+    fclose(fp);
+    curl_easy_cleanup(curl);
+
+    if (res == CURLE_OK) {
+        g_UpdateSavePath = savePath;
+        g_UpdateReady    = true;
+        LOGI("[AutoUpdate] Download complete → %s", savePath.c_str());
+    } else {
+        LOGI("[AutoUpdate] Download failed: %s", curl_easy_strerror(res));
+        remove(savePath.c_str());
+    }
+    g_UpdateDownloading = false;
+    return nullptr;
+}
+
+INLINE void StartAutoUpdate(const std::string& url) {
+    if (url.empty() || g_UpdateDownloading || g_UpdateReady) return;
+    g_UpdateDownloading = true;
+    LOGI("[AutoUpdate] Starting download from: %s", url.c_str());
+    pthread_t t;
+    std::string* urlCopy = new std::string(url);
+    pthread_create(&t, nullptr, AutoUpdateThread, urlCopy);
+    pthread_detach(t);
+}
 
 std::string xor_encrypt(const std::string& data, const std::string& key) {
     std::string result;
@@ -125,319 +189,189 @@ INLINE std::string decryptData(const std::string& encryptedData, const std::stri
     }
 }
 
-struct WebSocketFrame {
-    std::string data;
-    bool success;
-};
-
-inline std::string generateWebSocketKey() {
-    static const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string key;
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 63);
-    for (int i = 0; i < 16; i++) {
-        key += charset[dis(gen)];
-    }
-    return base64_encode(key);
+static size_t curlWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    std::string* response = static_cast<std::string*>(userdata);
+    response->append(ptr, size * nmemb);
+    return size * nmemb;
 }
 
-inline std::string createWebSocketFrame(const std::string& message) {
-    std::string frame;
-    frame += (char)0x81;
-    
-    size_t len = message.length();
-    if (len <= 125) {
-        frame += (char)(0x80 | len);
-    } else if (len <= 65535) {
-        frame += (char)(0x80 | 126);
-        frame += (char)((len >> 8) & 0xFF);
-        frame += (char)(len & 0xFF);
-    } else {
-        frame += (char)(0x80 | 127);
-        for (int i = 7; i >= 0; i--) {
-            frame += (char)((len >> (i * 8)) & 0xFF);
-        }
-    }
-    
-    unsigned char mask[4];
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 255);
-    for (int i = 0; i < 4; i++) {
-        mask[i] = dis(gen);
-        frame += mask[i];
-    }
-    
-    for (size_t i = 0; i < message.length(); i++) {
-        frame += message[i] ^ mask[i % 4];
-    }
-    
-    return frame;
-}
+inline std::string httpPost(const std::string& url, const std::string& jsonBody, int timeoutSec = 15) {
+    std::string response;
+    CURL* curl = curl_easy_init();
+    if (!curl) return "";
 
-inline WebSocketFrame parseWebSocketFrame(const char* data, size_t dataLen) {
-    WebSocketFrame result;
-    result.success = false;
-    
-    if (dataLen < 2) return result;
-    
-    size_t payloadLen = data[1] & 0x7F;
-    size_t headerLen = 2;
-    
-    if (payloadLen == 126) {
-        if (dataLen < 4) return result;
-        payloadLen = ((unsigned char)data[2] << 8) | (unsigned char)data[3];
-        headerLen = 4;
-    } else if (payloadLen == 127) {
-        if (dataLen < 10) return result;
-        payloadLen = 0;
-        for (int i = 0; i < 8; i++) {
-            payloadLen = (payloadLen << 8) | (unsigned char)data[2 + i];
-        }
-        headerLen = 10;
-    }
-    
-    if (dataLen < headerLen + payloadLen) return result;
-    
-    result.data = std::string(data + headerLen, payloadLen);
-    result.success = true;
-    return result;
-}
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "Accept: application/json");
 
-inline int connectWebSocket(const char* host, int port, int timeoutSec = 10) {
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) return -1;
-    
-    struct timeval timeout;
-    timeout.tv_sec = timeoutSec;
-    timeout.tv_usec = 0;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-    
-    struct sockaddr_in serverAddr;
-    memset(&serverAddr, 0, sizeof(serverAddr));
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(port);
-    
-    if (inet_pton(AF_INET, host, &serverAddr.sin_addr) <= 0) {
-        close(sock);
-        return -1;
-    }
-    
-    if (connect(sock, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
-        close(sock);
-        return -1;
-    }
-    
-    std::string wsKey = generateWebSocketKey();
-    std::stringstream request;
-    request << "GET / HTTP/1.1\r\n";
-    request << "Host: " << host << ":" << port << "\r\n";
-    request << "Upgrade: websocket\r\n";
-    request << "Connection: Upgrade\r\n";
-    request << "Sec-WebSocket-Key: " << wsKey << "\r\n";
-    request << "Sec-WebSocket-Version: 13\r\n";
-    request << "\r\n";
-    
-    std::string reqStr = request.str();
-    if (send(sock, reqStr.c_str(), reqStr.length(), 0) < 0) {
-        close(sock);
-        return -1;
-    }
-    
-    char buffer[1024];
-    ssize_t received = recv(sock, buffer, sizeof(buffer) - 1, 0);
-    if (received <= 0) {
-        close(sock);
-        return -1;
-    }
-    buffer[received] = '\0';
-    
-    if (strstr(buffer, "101") == nullptr) {
-        close(sock);
-        return -1;
-    }
-    
-    return sock;
-}
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, jsonBody.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)jsonBody.size());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)timeoutSec);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)timeoutSec);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
 
-inline std::string sendWebSocketMessage(int sock, const std::string& message, int timeoutSec = 10) {
-    std::string frame = createWebSocketFrame(message);
-    if (send(sock, frame.c_str(), frame.length(), 0) < 0) {
-        return "";
+    CURLcode res = curl_easy_perform(curl);
+    curl_slist_free_all(headers);
+
+    if (res != CURLE_OK) {
+        curl_easy_cleanup(curl);
+        return std::string("__CURL_ERR__:") + curl_easy_strerror(res);
     }
-    
-    char buffer[65536];
-    ssize_t received = recv(sock, buffer, sizeof(buffer), 0);
-    if (received <= 0) {
-        return "";
-    }
-    
-    WebSocketFrame wsFrame = parseWebSocketFrame(buffer, received);
-    if (!wsFrame.success) {
-        return "";
-    }
-    
-    return wsFrame.data;
+    curl_easy_cleanup(curl);
+    return response;
 }
 
 std::string ERROR_MESSAGE = "";
 
 static bool logged_in = false;
 static bool is_logging_in = false;
-std::string g_Token, g_Auth;
-std::string g_ExpTime = "N/A";
+std::string g_Token          = "";
+std::string g_Auth           = "";
+std::string g_ExpTime        = "N/A";
+std::string g_Username       = "";
+std::string g_HWID           = "";
+int         g_DaysLeft       = 0;
+bool        g_UpdateAvailable = false;
+std::string g_LatestVersion  = "";
+std::string g_DownloadUrl    = "";
+std::string g_GameVersion    = "1.0";
+
+// ── Detect 8BP version from /proc/self/maps ─────────────────────────
+static std::string DetectGameVersion() {
+    FILE* f = fopen("/proc/self/maps", "r");
+    if (!f) return "1.0";
+    char line[512];
+    std::string ver = "1.0";
+    while (fgets(line, sizeof(line), f)) {
+        if (!strstr(line, "eightballpool")) continue;
+        // Path: /data/app/~~xxx/com.miniclip.eightballpool-VERSION/base.apk
+        char* pool = strstr(line, "eightballpool");
+        if (!pool) continue;
+        char* dash = strchr(pool, '-');
+        if (!dash) continue;
+        dash++;
+        char vbuf[32] = {};
+        int vi = 0;
+        while (*dash && *dash != '/' && *dash != '\n' && *dash != ' ' && vi < 30)
+            vbuf[vi++] = *dash++;
+        if (vi > 0 && vi < 30) { ver = vbuf; break; }
+    }
+    fclose(f);
+    return ver;
+}
 
 INLINE bool Login(std::string androidID, std::string key) {
-    
+
     if (androidID.empty()) {
         ERROR_MESSAGE = O("Could not get Android ID");
         return false;
     }
-    
+
     if (key.empty()) {
         ERROR_MESSAGE = O("Key Is Empty or Failed to get Key");
         return false;
     }
-    
+
     is_logging_in = true;
     ERROR_MESSAGE = "";
-    std::string version = OO("1.0").str();
-    std::string gametype = OO("8ball").str();
+
+    const std::string validateUrl = OO("https://panel-8-bp.vercel.app/api/public/validate").str();
+
+    // Read device info from Android system properties
+    char propModel[PROP_VALUE_MAX]   = {};
+    char propAndroid[PROP_VALUE_MAX] = {};
+    __system_property_get("ro.product.model",          propModel);
+    __system_property_get("ro.build.version.release",  propAndroid);
+    std::string deviceModel   = propModel[0]   ? propModel   : "Unknown";
+    std::string androidVer    = propAndroid[0] ? propAndroid : "Unknown";
+    g_GameVersion             = DetectGameVersion();
+    std::string gameVer       = g_GameVersion;
 
     try {
-        const std::string encryption_key = OO("JiM21rNU12eERlNmpqa3FuQks").str();
-        const std::string token_key = OO("kdJw32jdnFkaQfObkkDcTy").str();
-        const std::string ws_token = OO("KJGMDKFJDHG34KD").str();  
-        
-        const char* wsHost = OO("185.157.46.41").str().c_str();
-        int wsPort = 3001;
-        
-        int sock = connectWebSocket(wsHost, wsPort, 15);
-        if (sock < 0) {
-            ERROR_MESSAGE = OO("WebSocket connection failed").str();
-            is_logging_in = false;
-            return false;
-        }
-        
-        nlohmann::json registerPayload = {
-            {"register", true},
-            {"token", ws_token}
+        nlohmann::json payload = {
+            {OO("key").str(),             key},
+            {OO("hwid").str(),            androidID},
+            {OO("device_model").str(),    deviceModel},
+            {OO("android_version").str(), androidVer},
+            {OO("game_version").str(),    gameVer},
+            {OO("lib_version").str(),     std::string(LIB_VERSION)}
         };
-        std::string registerResponse = sendWebSocketMessage(sock, registerPayload.dump());
-        
-        if (registerResponse.empty()) {
-            close(sock);
-            ERROR_MESSAGE = OO("WebSocket register failed").str();
-            is_logging_in = false;
-            return false;
-        }
-        
-        try {
-            nlohmann::json regResp = nlohmann::json::parse(registerResponse);
-            if (!regResp.contains("success") || regResp["success"] != true) {
-                close(sock);
-                std::string regError = regResp.value("error", "Register failed");
-                ERROR_MESSAGE = regError;
-                is_logging_in = false;
-                return false;
-            }
-        } catch (...) {
-            close(sock);
-            ERROR_MESSAGE = OO("Register response parse error").str();
-            is_logging_in = false;
-            return false;
-        }
-        
-        nlohmann::json authPayload = {
-            {OO("license_key").str(), key},
-            {OO("hwid").str(), androidID},
-            {OO("game_type").str(), gametype},
-            {OO("version").str(), version}
-        };
-        
-        std::string jsonPayload = authPayload.dump();
-        std::string encrypted = xor_encrypt(jsonPayload, encryption_key);
-        std::string encodedData = base64_encode(encrypted);
-        
-        nlohmann::json finalPayload = {
-            {"token", ws_token},
-            {"data", encodedData}
-        };
-        
-        std::string authResponse = sendWebSocketMessage(sock, finalPayload.dump());
-        close(sock);
-        
-        if (authResponse.empty()) {
-            ERROR_MESSAGE = OO("WebSocket auth request failed").str();
-            is_logging_in = false;
-            return false;
-        }
-        
-        std::string decryptedResponse = decryptData(authResponse, encryption_key);
-        
-        if (decryptedResponse.empty()) {
-            ERROR_MESSAGE = OO("Failed to decrypt server response").str();
-            is_logging_in = false;
-            return false;
-        }
-        
-        nlohmann::json jsonResponse = nlohmann::json::parse(decryptedResponse);
-        
-        if (!jsonResponse.contains("status") || jsonResponse["status"] != "success") {
-            if (jsonResponse.contains("message") && jsonResponse["message"].is_string()) {
-                ERROR_MESSAGE = jsonResponse["message"].get<std::string>();
-            } else {
-                ERROR_MESSAGE = OO("Server returned unknown error").str();
-            }
-            is_logging_in = false;
-            return false;
-        }
-        
-        if (jsonResponse.contains("data")) {
-            auto data = jsonResponse["data"];
 
-            std::string expiryDate;
-            std::string serverVersion;
-            try { expiryDate = data.value("expiry_date", ""); } catch(...) { expiryDate = ""; }
-            try { serverVersion = data.value("version", ""); } catch(...) { serverVersion = ""; }
-            std::string authToken = data["auth_token"];
+        std::string rawResponse = httpPost(validateUrl, payload.dump(), 15);
 
-            if (data.contains("max_devices") && data["max_devices"].is_string()) {
-                try { data["max_devices"] = std::stoi(data["max_devices"].get<std::string>()); } catch(...) {}
-            }
-            if (data.contains("active_devices") && data["active_devices"].is_string()) {
-                try { data["active_devices"] = std::stoi(data["active_devices"].get<std::string>()); } catch(...) {}
-            }
-
-            if (serverVersion != version) {
-                ERROR_MESSAGE = OO("Your version is old, please update it. Current version: ").str() + serverVersion;
-                is_logging_in = false;
-                return false;
-            }
-            
-            if (data.contains("license_key") && data["license_key"] != key) {
-                ERROR_MESSAGE = OO("Received Bad Data From Server").str();
-                is_logging_in = false;
-                return false;
-            }
-
-            logged_in = true;
-            is_logging_in = false;
-            g_Token = OO("0wQRlDkgoQlf").str();
-            g_Auth  = OO("0wQRlDkgoQlf").str();
-            g_ExpTime = expiryDate.empty() ? "N/A" : expiryDate;
-            bValid = g_Token == g_Auth;
-            persistent_string["key"] = key;
-            save_persistence();
-
-            return true;
-        } else {
-            ERROR_MESSAGE = OO("Response missing 'data' field").str();
+        if (rawResponse.empty() || rawResponse.substr(0, 12) == "__CURL_ERR__") {
+            if (rawResponse.size() > 13)
+                ERROR_MESSAGE = OO("Network error: ").str() + rawResponse.substr(13);
+            else
+                ERROR_MESSAGE = OO("Connection failed. Check your internet.").str();
             is_logging_in = false;
             return false;
         }
+
+        nlohmann::json jsonResponse = nlohmann::json::parse(rawResponse);
+
+        if (!jsonResponse.contains("valid") || jsonResponse["valid"] != true) {
+            std::string reason = "";
+            try { reason = jsonResponse.value("reason", ""); } catch (...) {}
+
+            if (reason == "invalid")       ERROR_MESSAGE = OO("Invalid license key.").str();
+            else if (reason == "banned")   ERROR_MESSAGE = OO("License key has been banned.").str();
+            else if (reason == "expired")  ERROR_MESSAGE = OO("License key has expired.").str();
+            else if (reason == "hwid_mismatch") ERROR_MESSAGE = OO("Device not authorized. HWID mismatch.").str();
+            else if (reason == "missing_params") ERROR_MESSAGE = OO("Missing required parameters.").str();
+            else if (reason == "server_error")   ERROR_MESSAGE = OO("Server error. Try again later.").str();
+            else ERROR_MESSAGE = OO("License validation failed.").str();
+
+            is_logging_in = false;
+            return false;
+        }
+
+        std::string expiryDate  = "";
+        int         daysLeft    = 0;
+        std::string username    = "";
+        bool        updAvail    = false;
+        std::string latestVer   = "";
+        std::string dlUrl       = "";
+        try { expiryDate = jsonResponse.value("expires_at",      "");    } catch (...) {}
+        try { daysLeft   = jsonResponse.value("days_left",        0);    } catch (...) {}
+        try { username   = jsonResponse.value("username",         "");   } catch (...) {}
+        try { updAvail   = jsonResponse.value("update_available", false); } catch (...) {}
+        try { latestVer  = jsonResponse.value("latest_version",  "");   } catch (...) {}
+        try { dlUrl      = jsonResponse.value("download_url",    "");   } catch (...) {}
+
+        logged_in          = true;
+        is_logging_in      = false;
+        g_Token            = OO("0wQRlDkgoQlf").str();
+        g_Auth             = OO("0wQRlDkgoQlf").str();
+        g_ExpTime          = expiryDate.empty() ? "N/A" : expiryDate;
+        g_DaysLeft         = daysLeft;
+        g_Username         = username.empty() ? "User" : username;
+        g_UpdateAvailable  = updAvail;
+        g_LatestVersion    = latestVer;
+        g_DownloadUrl      = dlUrl;
+        bValid             = g_Token == g_Auth;
+        // Reset stale update-ready flag when server says no update needed
+        // (new lib version already applied after restart)
+        if (!updAvail) {
+            g_UpdateReady    = false;
+            g_UpdateSavePath = "";
+        }
+        if (updAvail && !dlUrl.empty()) StartAutoUpdate(dlUrl);
+        g_HWID                        = androidID;
+        persistent_string["key"]      = key;
+        persistent_string["username"] = g_Username;
+        save_persistence();
+
+        return true;
+
     } catch (const std::exception& e) {
         ERROR_MESSAGE = OO("Error: ").str() + std::string(e.what());
         is_logging_in = false;
