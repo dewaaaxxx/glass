@@ -6,7 +6,7 @@
 
 #include "ScreenTable.h"
 
-// #include "PowerSlider.h"
+//#include "PowerSlider.h"
 #include "ButtonClicker.h"
 
 using namespace ImGui;
@@ -62,7 +62,7 @@ bool IsShotValid() {
     return true;
 }
 
-/* void UpdatePowerSlider() {
+void UpdatePowerSlider() {
     static bool isSearchingExtraPower = false;
     static float savedLowestPower = 0.0f;
     static ImVec2 savedLowestPos = ImVec2(0, 0);
@@ -103,7 +103,7 @@ bool IsShotValid() {
             isSearchingExtraPower = false;
         }
     }
-} */
+} 
 
 Point2D lastFailedCuePos = { -1000.0, -1000.0 };
 namespace AutoPlay {
@@ -542,7 +542,7 @@ namespace AutoPlay {
             if (DrawPlayPauseButton(bAutoPlaying)) {
                 bAutoPlaying = !bAutoPlaying;
                 if (bAutoPlaying) ClearState();
-                // if (!bAutoPlaying && powerSlider.Active) powerSlider.Cancel();
+                if (!bAutoPlaying && powerSlider.Active) powerSlider.Cancel();
             }
         } End();
 
@@ -599,13 +599,13 @@ namespace AutoPlay {
             }
         }
 
-        /* if (bAutoPlaying && sharedGameManager.mStateManager().isPlayerTurn()) {
+         if (bAutoPlaying && sharedGameManager.mStateManager().isPlayerTurn()) {
             if (powerSlider.Active) {
                 UpdateTouchSimulation();
                 powerSlider.Update();
             } else Start();
-        } */
+        } 
 
-        // if (!bAutoPlaying && powerSlider.Active) powerSlider.Update(); // for TestAutoPlay
+         if (!bAutoPlaying && powerSlider.Active) powerSlider.Update(); // for TestAutoPlay
     }
 };
