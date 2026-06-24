@@ -15,7 +15,7 @@
 #include "8bp/inc/GameConstants.h"
 #include "8bp/inc/NumberUtils.h"
 #include "8bp/inc/Prediction.fast.h"
-#include "8bp/inc/PowerSlider.h"
+#include "PowerSlider.h"
 #include "8bp/inc/AutoPlay.h"
 #include "8bp/inc/AutoQueue.h"
 #include "8bp/inc/ScreenTable.h"
