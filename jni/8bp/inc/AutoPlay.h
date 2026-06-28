@@ -114,7 +114,7 @@ namespace AutoPlay {
     bool bAutoPlaying = false;
     static inline double targetAngle = 0.0;
     static inline double startAngle = 0.0;
-    static inline double pendingShotAngle = 0.0;
+    static inline double stateStartTime = 0.0;
 
     enum State {
         IDLE,           // Waiting for player turn or Autoplay to be enabled
@@ -134,7 +134,7 @@ namespace AutoPlay {
 
     bool shouldAutoPlay() { return !didSetAngle || lastSetAngle == sharedGameManager.mVisualCue().mVisualGuide().mAimAngle(); }
     
-    void nowSec() {
+    static double nowSec() {
         auto now = std::chrono::steady_clock::now();
         auto duration = now.time_since_epoch();
         return std::chrono::duration<double>(duration).count();
@@ -158,14 +158,14 @@ namespace AutoPlay {
         lastFailedCuePos = { -1000.0, -1000.0 };
     }
     
-    auto UpdateJoystickVisuals = [&](double angle) {
+    void UpdateJoystickVisuals(double angle) {
         float jX = Width * 0.83f;
         float jY = Height * 0.82f;
         float jR = 65.0f;
         float tX = jX + cos(angle) * jR;
         float tY = jY + sin(angle) * jR;
         NativeTouchesMove(5, tX, tY);
-    };
+    }
     
     static double EaseInOutCubic(double t) {
         return t < 0.5 ? 4 * t * t * t : 1.0 - pow(-2.0 * t + 2.0, 3.0) / 2.0;
@@ -650,7 +650,7 @@ namespace AutoPlay {
                 
                 // ─── 2. Drag Slider ──────────────────────────────────────
                 if (!powerSlider.Active) {
-                    powerSlider.SimulateDrag(sliderRect, pendingshotpower, 0.85f, 0.4f);
+                    powerSlider.SimulateDrag(sliderRect, pendingShotPower, 0.85f, 0.4f);
                 }
                 if (powerSlider.Active) return;
                 takeShot(pendingShotAngle, pendingShotPower);
