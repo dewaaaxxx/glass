@@ -639,7 +639,6 @@ namespace AutoPlay {
             if (t >= 1.0) {
                 setAimAngle(targetAngle);
                 UpdateJoystickVisuals(targetAngle);
-                stateStartTime = now;
                 float sliderXPercent = persistent_float[O("fPowerBarXPercent")];
                 float sliderX = Width * sliderXPercent;
                 if (persistent_int[O("iPowerBarSide")] == 1)
