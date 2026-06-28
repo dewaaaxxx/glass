@@ -3,12 +3,13 @@
 #include "Prediction.fast.h"
 #include <imgui/imgui.h>
 #include <algorithm>
-#include <chrono>
-#include <cmath>
 
 #include "ScreenTable.h"
+
 #include "PowerSlider.h"
 #include "ButtonClicker.h"
+#include <math.h>
+#include <random>
 
 using namespace ImGui;
 
@@ -111,6 +112,9 @@ namespace AutoPlay {
     double lastSetAngle = 0.f;
     bool didSetAngle = false;
     bool bAutoPlaying = false;
+    static inline double targetAngle = 0.0;
+    static inline double startAngle = 0.0;
+    static inline double pendingShotAngle = 0.0;
 
     enum State {
         IDLE,           // Waiting for player turn or Autoplay to be enabled
@@ -129,20 +133,11 @@ namespace AutoPlay {
     } scan = FAST;
 
     bool shouldAutoPlay() { return !didSetAngle || lastSetAngle == sharedGameManager.mVisualCue().mVisualGuide().mAimAngle(); }
-
-    // ── Drag animation state ──────────────────────────────────────────────────
-    static inline double anim_TargetAngle  = 0.0;
-    static inline double anim_TargetPower  = 0.0;
-    static inline double anim_StartAngle   = 0.0;
-    static inline double anim_StateStart   = 0.0;
-    static inline bool   anim_IsPulling    = false;
-    static inline bool   anim_RotationDone = false;
-    static inline bool   anim_TouchStarted = false;
-    static inline int    anim_Phase        = 0; // 0=rotate 1=hold 2=power 3=wait
-
-    static double nowSec() {
-        return std::chrono::duration<double>(
-            std::chrono::steady_clock::now().time_since_epoch()).count();
+    
+    void nowSec() {
+        auto now = std::chrono::steady_clock::now();
+        auto duration = now.time_since_epoch();
+        return std::chrono::duration<double>(duration).count();
     }
 
     void setAimAngle(double angle) {
@@ -150,181 +145,30 @@ namespace AutoPlay {
         sharedGameManager.mVisualCue().mVisualGuide().mAimAngle(angle);
     }
 
-    void triggerShot() {
-        M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
-    }
-
-    // Ganti takeShot — sekarang mulai animasi drag
     void takeShot(double angle, double power) {
         setAimAngle(angle);
         gPrediction->determineShotResult(false, angle, power);
 
-        anim_TargetAngle  = angle;
-        anim_TargetPower  = power;
-        anim_StartAngle   = sharedGameManager.mVisualCue().mVisualGuide().mAimAngle();
-        anim_StateStart   = nowSec();
-        anim_IsPulling    = true;
-        anim_RotationDone = false;
-        anim_TouchStarted = false;
-        anim_Phase        = 0;
+        sharedGameManager.mVisualCue().mPower(ShotPowerToPower(power));
+        M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
     }
-
+    
     void ClearState() {
         g_CurrentCandidate.idx = -1;
         lastFailedCuePos = { -1000.0, -1000.0 };
     }
-
-    // Dipanggil tiap frame dari Update() — jalankan animasi drag
-    void UpdateDragAnim() {
-        if (!anim_IsPulling) return;
-
-        // Joystick position (same as AutoPlay_impl)
-        const float jX = Width * 0.83f;
-        const float jY = Height * 0.82f;
-        const float jR = 65.0f;
-
-        double elapsed = nowSec() - anim_StateStart;
-
-        // ── Phase 0: Joystick sweep (5 sub-phases) ────────────────────────
-        if (anim_Phase == 0) {
-            double normalizedStart  = anim_StartAngle;
-            double normalizedTarget = anim_TargetAngle;
-            double delta = normalizedTarget - normalizedStart;
-            if (delta >  M_PI) delta -= 2.0 * M_PI;
-            if (delta < -M_PI) delta += 2.0 * M_PI;
-            double dir = (delta >= 0) ? 1.0 : -1.0;
-
-            double oppositeAngle  = normalizedStart - dir * (30.0 * M_PI / 180.0);
-            double overshootAngle = normalizedTarget + dir * (20.0 * M_PI / 180.0);
-            double nudgeAngle     = normalizedTarget - dir * (1.5  * M_PI / 180.0);
-
-            const double t1 = 0.20, t2 = 0.75, t3 = 1.00, t4 = 1.40, t5 = 1.60;
-            double curAngle = normalizedTarget;
-
-            if (elapsed < t1) {
-                double t = elapsed / t1;
-                t = 1.0 - pow(1.0 - t, 3.0);
-                curAngle = normalizedStart + (oppositeAngle - normalizedStart) * t;
-                if (!anim_TouchStarted) {
-                    anim_TouchStarted = true;
-                    NativeTouchesBegin(5, jX, jY);
-                }
-            } else if (elapsed < t2) {
-                double t = (elapsed - t1) / (t2 - t1);
-                t = t * t * (3.0 - 2.0 * t);
-                curAngle = oppositeAngle + (overshootAngle - oppositeAngle) * t;
-            } else if (elapsed < t3) {
-                double t = (elapsed - t2) / (t3 - t2);
-                t = t * t * (3.0 - 2.0 * t);
-                curAngle = overshootAngle + (nudgeAngle - overshootAngle) * t;
-            } else if (elapsed < t4) {
-                double t = (elapsed - t3) / (t4 - t3);
-                t = sin(t * M_PI / 2.0);
-                curAngle = nudgeAngle + (normalizedTarget - nudgeAngle) * t;
-            } else if (elapsed < t5) {
-                curAngle = normalizedTarget;
-                if (elapsed > t5 - 0.05 && !anim_RotationDone) {
-                    anim_RotationDone = true;
-                    setAimAngle(anim_TargetAngle);
-                }
-            }
-
-            if (elapsed < t5) {
-                setAimAngle(curAngle);
-                NativeTouchesMove(5, jX + (float)cos(curAngle) * jR,
-                                     jY + (float)sin(curAngle) * jR);
-                return;
-            }
-
-            // Selesai rotate — snap ke target, lanjut phase 1
-            setAimAngle(anim_TargetAngle);
-            NativeTouchesMove(5, jX + (float)cos(anim_TargetAngle) * jR,
-                                 jY + (float)sin(anim_TargetAngle) * jR);
-            anim_StateStart = nowSec();
-            anim_Phase = 1;
-            return;
-        }
-
-        // ── Phase 1: Hold sebentar lalu mulai power slider ────────────────
-        if (anim_Phase == 1) {
-            NativeTouchesMove(5, jX + (float)cos(anim_TargetAngle) * jR,
-                                 jY + (float)sin(anim_TargetAngle) * jR);
-            setAimAngle(anim_TargetAngle);
-
-            if (elapsed >= 0.10) {
-                // Release joystick
-                NativeTouchesEnd(5, jX + (float)cos(anim_TargetAngle) * jR,
-                                    jY + (float)sin(anim_TargetAngle) * jR);
-
-                // Set power di memory dulu biar akurat
-                sharedGameManager.mVisualCue().mPower(ShotPowerToPower(anim_TargetPower));
-
-                // Drag power slider
-                float sliderX     = Width  * persistent_float[O("fPowerBarXPercent")];
-                if (sliderX <= 10.f) sliderX = Width * 0.858f;
-                float sliderYStart = Height * persistent_float[O("fPowerBarYStartPercent")];
-                float sliderYEnd   = Height * persistent_float[O("fPowerBarYEndPercent")];
-                if (sliderYStart <= 0.f) sliderYStart = Height * 0.18f;
-                if (sliderYEnd   <= 0.f) sliderYEnd   = Height * 0.82f;
-                ImVec4 rect(sliderX - 20.f, sliderYStart, 40.f, sliderYEnd - sliderYStart);
-                powerSlider.SimulateDrag(rect, (float)anim_TargetPower, 0.85f, 0.40f);
-
-                anim_StateStart = nowSec();
-                anim_Phase = 2;
-            }
-            return;
-        }
-
-        // ── Phase 2: Tunggu power slider selesai, lalu fire ───────────────
-        if (anim_Phase == 2) {
-            if (powerSlider.Active) return;
-
-            triggerShot();
-            anim_StateStart = nowSec();
-            anim_Phase = 3;
-            return;
-        }
-
-        // ── Phase 3: Tunggu bola berhenti ─────────────────────────────────
-        if (anim_Phase == 3) {
-            setAimAngle(anim_TargetAngle);
-
-            static double s_stoppedAt = -1.0;
-            if (s_stoppedAt < anim_StateStart) s_stoppedAt = nowSec();
-
-            bool timedOut = elapsed > 10.0;
-
-            // Cek apakah bola masih bergerak
-            bool ballsMoving = false;
-            if (sharedGameManager) {
-                Table table = sharedGameManager.mTable;
-                if (table) {
-                    auto& balls = table.mBalls();
-                    for (int i = 0; i < 16 && balls; i++) {
-                        auto b = balls[i];
-                        if (b.instance) {
-                            auto v = b.velocity();
-                            if (v.x * v.x + v.y * v.y > 0.01) { ballsMoving = true; break; }
-                        }
-                    }
-                }
-            }
-
-            if (ballsMoving && !timedOut) {
-                s_stoppedAt = nowSec();
-                return;
-            }
-
-            double settledFor = nowSec() - s_stoppedAt;
-            if (settledFor < 0.3 && !timedOut) return;
-
-            // Selesai — reset semua
-            s_stoppedAt    = -1.0;
-            anim_IsPulling = false;
-            anim_Phase     = 0;
-            ClearState();
-            state = IDLE;
-        }
+    
+    auto UpdateJoystickVisuals = [&](double angle) {
+        float jX = Width * 0.83f;
+        float jY = Height * 0.82f;
+        float jR = 65.0f;
+        float tX = jX + cos(angle) * jR;
+        float tY = jY + sin(angle) * jR;
+        NativeTouchesMove(5, tX, tY);
+    };
+    
+    static double EaseInOutCubic(double t) {
+        return t < 0.5 ? 4 * t * t * t : 1.0 - pow(-2.0 * t + 2.0, 3.0) / 2.0;
     }
     
     void Shoot(double angle, double power = 0.f) {
@@ -749,14 +593,7 @@ namespace AutoPlay {
     
     void Update() {
         buttonClicker.Update();
-        powerSlider.Update();
-        UpdateDragAnim();
         DrawToggleButton();
-
-        // Kalau animasi drag sedang jalan, jangan scan
-        if (anim_IsPulling) return;
-
-        if (isAnimationActive()) return;
 
         if (isAnimationActive()) return;
 
@@ -780,10 +617,48 @@ namespace AutoPlay {
                 buttonClicker.Click(GetPocketScreenPos(g_CurrentCandidate.pocketIndex));
             }
             if (nominationFrameCounter > 20 && !buttonClicker.Active) {
+                targetAngle = pendingShotAngle;
+                startAngle = sharedGameManager.mVisualCue().mVisualGuide().mAimAngle();
+                state = EXECUTING;
+                stateStartTime = nowSec();
+            }
+        }
+        
+        if (state == EXECUTING) {
+            double now = nowSec();
+        
+            // ─── 1. Drag Joystick ────────────────────────────────────────
+            double t = (now - stateStartTime) / 0.6;
+            if (t > 1.0) t = 1.0;
+        
+            double ease = EaseInOutCubic(t);
+            double curAngle = startAngle + (targetAngle - startAngle) * ease;
+            setAimAngle(curAngle);
+            UpdateJoystickVisuals(curAngle);
+        
+            if (t >= 1.0) {
+                setAimAngle(targetAngle);
+                UpdateJoystickVisuals(targetAngle);
+                stateStartTime = now;
+                float sliderXPercent = persistent_float[O("fPowerBarXPercent")];
+                float sliderX = Width * sliderXPercent;
+                if (persistent_int[O("iPowerBarSide")] == 1)
+                    sliderX = Width * (1.0f - sliderXPercent);
+                float sliderYStart = Height * persistent_float[O("fPowerBarYStartPercent")];
+                float sliderYEnd   = Height * persistent_float[O("fPowerBarYEndPercent")];
+                ImVec4 sliderRect(sliderX - 20.0f, sliderYStart, 40.0f, sliderYEnd - sliderYStart);
+                
+                // ─── 2. Drag Slider ──────────────────────────────────────
+                if (!powerSlider.Active) {
+                    powerSlider.SimulateDrag(sliderRect, pendingshotpower, 0.85f, 0.4f);
+                }
+                if (powerSlider.Active) return;
                 takeShot(pendingShotAngle, pendingShotPower);
+                // Reset state
                 ClearState();
                 state = IDLE;
             }
+            return;
         }
 
         /* if (bAutoPlaying && sharedGameManager.mStateManager().isPlayerTurn()) {
