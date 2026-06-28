@@ -502,6 +502,31 @@ static void DrawContentArea(float sidebarW, float winW, float winH) {
             TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), "Power Slider Position");
             Dummy(ImVec2(0, 4));
 
+            // ── Power Slider Position ──
+TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), "Power Slider Position");
+Dummy(ImVec2(0, 4));
+
+float x = persistent_float[O("fPowerBarXPercent")];
+if (SliderFloat("X Position", &x, 0.00f, 0.50f, "%.3f")) {
+    persistent_float[O("fPowerBarXPercent")] = x;
+    need_save = true;
+}
+Dummy(ImVec2(0, 4));
+
+float top = persistent_float[O("fPowerBarYStartPercent")];
+if (SliderFloat("Top Position", &top, 0.05f, 0.50f, "%.3f")) {
+    persistent_float[O("fPowerBarYStartPercent")] = top;
+    need_save = true;
+}
+Dummy(ImVec2(0, 4));
+
+float h = persistent_float[O("fPowerBarYEndPercent")];
+if (SliderFloat("Height", &h, 0.30f, 0.90f, "%.3f")) {
+    persistent_float[O("fPowerBarYEndPercent")] = h;
+    need_save = true;
+}
+Dummy(ImVec2(0, 10));
+
             if (persistent_bool["bPSliderPreview"]) {
     ImDrawList* fgdl = GetForegroundDrawList();
     if (fgdl) {
