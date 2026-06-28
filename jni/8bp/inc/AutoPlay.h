@@ -123,7 +123,7 @@ namespace AutoPlay {
     static inline double anim_CurrentPower = 0.0;
     static inline bool anim_RotationDone = false;
     static inline bool anim_TouchStarted = false;
-    static inline double startAngle = 0.0;
+    static inline Point2D lastSetCuePos
 
     enum State {
         IDLE,           // Waiting for player turn or Autoplay to be enabled
@@ -157,7 +157,15 @@ namespace AutoPlay {
         if (!vg) return;
         lastSetCuePos = gPrediction->guiData.balls[0].initialPosition;
         vg.mAimAngle(angle);
-        }
+    }
+    
+    void triggerShot() {
+        g_postShotLock = true;
+        g_postShotAngle = (automationSpeed == SPEED_HUMAN) ? targetAngle : anim_TargetAngle;
+        g_postShotPower = (automationSpeed == SPEED_HUMAN) ? pendingShotPower : anim_TargetPower;
+        g_postShotFrames = 15;
+        M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
+    }
 
     void takeShot(double angle, double power) {
         anim_TargetAngle = angle;
@@ -756,15 +764,5 @@ namespace AutoPlay {
                 return;
             }
         }
-    }
-
-        /* if (bAutoPlaying && sharedGameManager.mStateManager().isPlayerTurn()) {
-            if (powerSlider.Active) {
-                UpdateTouchSimulation();
-                powerSlider.Update();
-            } else Start();
-        } */
-
-        // if (!bAutoPlaying && powerSlider.Active) powerSlider.Update(); // for TestAutoPlay
     }
 };
