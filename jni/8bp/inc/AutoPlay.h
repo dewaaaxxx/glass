@@ -169,6 +169,11 @@ namespace AutoPlay {
         anim_Phase        = 0;
     }
 
+    void ClearState() {
+        g_CurrentCandidate.idx = -1;
+        lastFailedCuePos = { -1000.0, -1000.0 };
+    }
+
     // Dipanggil tiap frame dari Update() — jalankan animasi drag
     void UpdateDragAnim() {
         if (!anim_IsPulling) return;
@@ -320,11 +325,6 @@ namespace AutoPlay {
             ClearState();
             state = IDLE;
         }
-    }
-    
-    void ClearState() {
-        g_CurrentCandidate.idx = -1;
-        lastFailedCuePos = { -1000.0, -1000.0 };
     }
     
     void Shoot(double angle, double power = 0.f) {
