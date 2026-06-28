@@ -494,7 +494,48 @@ static void DrawContentArea(float sidebarW, float winW, float winH) {
         case 1: {
             Dummy(ImVec2(0, 10));
             need_save |= ToggleSwitch(O("Enable Auto Play"), &persistent_bool[O("bAutoPlay")]);
-            
+        
+            // ── Power Slider Position ──
+            Dummy(ImVec2(0, 10));
+            TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), "Power Slider Position");
+            Dummy(ImVec2(0, 4));
+        
+            float x = persistent_float[O("fPowerBarXPercent")];
+            if (SliderFloat("X Position", &x, 0.00f, 0.50f, "%.3f")) {
+                persistent_float[O("fPowerBarXPercent")] = x;
+                need_save = true;
+            }
+            Dummy(ImVec2(0, 4));
+        
+            float top = persistent_float[O("fPowerBarYStartPercent")];
+            if (SliderFloat("Top Position", &top, 0.05f, 0.50f, "%.3f")) {
+                persistent_float[O("fPowerBarYStartPercent")] = top;
+                need_save = true;
+            }
+            Dummy(ImVec2(0, 4));
+        
+            float h = persistent_float[O("fPowerBarYEndPercent")];
+            if (SliderFloat("Height", &h, 0.30f, 0.90f, "%.3f")) {
+                persistent_float[O("fPowerBarYEndPercent")] = h;
+                need_save = true;
+            }
+            Dummy(ImVec2(0, 10));
+        
+            // ── PREVIEW ──
+            ImDrawList* dl = GetWindowDrawList();
+            if (dl) {
+                ImVec2 screenSize = ImGui::GetIO().DisplaySize;
+                float px = screenSize.x * persistent_float[O("fPowerBarXPercent")];
+                float pt = screenSize.y * persistent_float[O("fPowerBarYStartPercent")];
+                float ph = screenSize.y * persistent_float[O("fPowerBarYEndPercent")];
+        
+                // Garis slider
+                dl->AddLine(ImVec2(px, pt), ImVec2(px, pt + ph), IM_COL32(255, 80, 80, 220), 3.5f);
+                // Titik atas & bawah
+                dl->AddCircleFilled(ImVec2(px, pt), 7.f, IM_COL32(80, 255, 80, 240));
+                dl->AddCircleFilled(ImVec2(px, pt + ph), 7.f, IM_COL32(80, 255, 80, 240));
+            }
+        
             Dummy(ImVec2(0, 20));
             TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), O("Auto play will automatically"));
             TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), O("aim and shoot for you"));
