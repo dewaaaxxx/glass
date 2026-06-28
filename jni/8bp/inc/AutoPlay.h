@@ -123,7 +123,7 @@ namespace AutoPlay {
     static inline double anim_CurrentPower = 0.0;
     static inline bool anim_RotationDone = false;
     static inline bool anim_TouchStarted = false;
-    static inline Point2D lastSetCuePos = {-1000, -1000};
+    static inline Point2D lastSetCuePos
 
     enum State {
         IDLE,           // Waiting for player turn or Autoplay to be enabled
@@ -160,6 +160,10 @@ namespace AutoPlay {
     }
     
     void triggerShot() {
+        g_postShotLock = true;
+        g_postShotAngle = (automationSpeed == SPEED_HUMAN) ? targetAngle : anim_TargetAngle;
+        g_postShotPower = (automationSpeed == SPEED_HUMAN) ? pendingShotPower : anim_TargetPower;
+        g_postShotFrames = 15;
         M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
     }
 
@@ -294,7 +298,10 @@ namespace AutoPlay {
                     g_CurrentCandidate.pocketIndex = gPrediction->guiData.balls[targetIdx].pocketIndex;
 
                     foundShot = true;
-                    Shoot(angle, power);
+                    pendingShotAngle = angle;
+                    pendingShotPower = power;
+                    state = NOMINATING;
+                    nominationFrameCounter = 0;
                     break;
                 }
 
@@ -345,8 +352,10 @@ namespace AutoPlay {
                 if (isPotentiallyValid) {
                     LOGI("AutoPlaySlow: Found shot at angle %f power %f", angle, power);
                     foundShot = true;
-                    Shoot(angle, power);
-                    // Do not reset scanning here, so we can resume if this shot fails
+                    pendingShotAngle = angle;
+                    pendingShotPower = power;
+                    state = NOMINATING;
+                    nominationFrameCounter = 0;
                     break;
                 }
             }
@@ -480,7 +489,10 @@ namespace AutoPlay {
                 g_CurrentCandidate.pocketIndex = gPrediction->guiData.balls[effectiveTargetIdx].pocketIndex;
 
                 foundShot = true;
-                Shoot(angle, cand.power);
+                pendingShotAngle = angle;
+                pendingShotPower = cand.power;
+                state = NOMINATING;
+                nominationFrameCounter = 0;
                 break;
             }
 
@@ -517,9 +529,12 @@ namespace AutoPlay {
             // if (!currentPottedBalls.empty() && startingPottedBalls != currentPottedBalls && isAngleGood) {
             if (isAngleGood) {
                 LOGI("AutoPlay: Found good angle %f with power %f", angle, cand.power);
-                g_CurrentCandidate = cand;
                 foundShot = true;
-                Shoot(angle, cand.power);
+                g_CurrentCandidate = cand;
+                pendingShotAngle = angle;
+                pendingShotPower = cand.power;
+                state = NOMINATING;
+                nominationFrameCounter = 0;
                 break;
             }
         }
