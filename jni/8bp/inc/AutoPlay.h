@@ -146,11 +146,16 @@ namespace AutoPlay {
     }
 
     void takeShot(double angle, double power) {
-        setAimAngle(angle);
+        /*setAimAngle(angle);
         gPrediction->determineShotResult(false, angle, power);
 
         sharedGameManager.mVisualCue().mPower(ShotPowerToPower(power));
-        M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
+        M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));*/
+        targetAngle = angle;
+        pendingShotPower = power;
+        startAngle = sharedGameManager.mVisualCue().mVisualGuide().mAimAngle();
+        state = EXECUTING;
+        stateStartTime = nowSec();
     }
     
     void ClearState() {
@@ -652,7 +657,8 @@ namespace AutoPlay {
                     powerSlider.SimulateDrag(sliderRect, pendingShotPower, 0.85f, 0.4f);
                 }
                 if (powerSlider.Active) return;
-                takeShot(pendingShotAngle, pendingShotPower);
+                sharedGameManager.mVisualCue().mPower(ShotPowerToPower(pendingShotPower));
+                M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
                 // Reset state
                 ClearState();
                 state = IDLE;
