@@ -123,7 +123,7 @@ namespace AutoPlay {
     static inline double anim_CurrentPower = 0.0;
     static inline bool anim_RotationDone = false;
     static inline bool anim_TouchStarted = false;
-    static inline Point2D lastSetCuePos
+    static inline Point2D lastSetCuePos = {-1000, -1000};
 
     enum State {
         IDLE,           // Waiting for player turn or Autoplay to be enabled
@@ -160,10 +160,6 @@ namespace AutoPlay {
     }
     
     void triggerShot() {
-        g_postShotLock = true;
-        g_postShotAngle = (automationSpeed == SPEED_HUMAN) ? targetAngle : anim_TargetAngle;
-        g_postShotPower = (automationSpeed == SPEED_HUMAN) ? pendingShotPower : anim_TargetPower;
-        g_postShotFrames = 15;
         M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
     }
 
