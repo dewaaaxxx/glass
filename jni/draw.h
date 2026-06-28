@@ -494,6 +494,8 @@ static void DrawContentArea(float sidebarW, float winW, float winH) {
         case 1: {
             Dummy(ImVec2(0, 10));
             need_save |= ToggleSwitch(O("Enable Auto Play"), &persistent_bool[O("bAutoPlay")]);
+            Dummy(ImVec2(0,10));
+            need_save |= ToggleSwitch(O("Preview Power Slider"), &persistent_bool[O("bPSliderPreview")]);
         
             // ── Power Slider Position ──
             Dummy(ImVec2(0, 10));
@@ -522,18 +524,18 @@ static void DrawContentArea(float sidebarW, float winW, float winH) {
             Dummy(ImVec2(0, 10));
         
             // ── PREVIEW ──
-            ImDrawList* dl = GetWindowDrawList();
-            if (dl) {
-                ImVec2 screenSize = ImGui::GetIO().DisplaySize;
-                float px = screenSize.x * persistent_float[O("fPowerBarXPercent")];
-                float pt = screenSize.y * persistent_float[O("fPowerBarYStartPercent")];
-                float ph = screenSize.y * persistent_float[O("fPowerBarYEndPercent")];
-        
-                // Garis slider
-                dl->AddLine(ImVec2(px, pt), ImVec2(px, pt + ph), IM_COL32(255, 80, 80, 220), 3.5f);
-                // Titik atas & bawah
-                dl->AddCircleFilled(ImVec2(px, pt), 7.f, IM_COL32(80, 255, 80, 240));
-                dl->AddCircleFilled(ImVec2(px, pt + ph), 7.f, IM_COL32(80, 255, 80, 240));
+            if (persistent_bool[O("bPSliderPreview")]) {
+    ImDrawList* dl = GetWindowDrawList();
+    ImVec2 scr = ImGui::GetIO().DisplaySize;
+    float x = scr.x * persistent_float[O("fPowerBarXPercent")];
+    float y = scr.y * persistent_float[O("fPowerBarYStartPercent")];
+    float h = scr.y * persistent_float[O("fPowerBarYEndPercent")];
+
+    // ── Garis vertikal slider ──
+    dl->AddLine(ImVec2(x, y), ImVec2(x, y + h), IM_COL32(255, 255, 255, 150), 2.0f);
+    // ── Garis horizontal panduan ──
+    dl->AddLine(ImVec2(0, y), ImVec2(scr.x, y), IM_COL32(255, 255, 255, 60), 1.0f);
+    dl->AddLine(ImVec2(0, y + h), ImVec2(scr.x, y + h), IM_COL32(255, 255, 255, 60), 1.0f);
             }
         
             Dummy(ImVec2(0, 20));
