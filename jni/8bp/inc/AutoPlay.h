@@ -708,7 +708,7 @@ namespace AutoPlay {
         auto _powerBarView = F(ptr, visualCue + 0x510);
         if (!_powerBarView) return true;
         auto activeAction = M(ptr, libmain + 0x2de6f30, ptr)(_powerBarView);
-        return activeAction != nullptr;
+        return activeAction != 0;
     }
 
     void Update() {
