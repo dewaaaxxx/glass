@@ -348,11 +348,11 @@ namespace AutoPlay {
         // ── State 2: Tunggu power slider selesai, lalu tembak ────────────────
         if (fastShotState == 2) {
             if (powerSlider.Active) {
-                // Update prediksi selama slider masih jalan
-                gPrediction->determineShotResult(true, anim_TargetAngle, anim_TargetPower,
-                                                 sharedGameManager.getShotSpin(), g_CurrentCandidate);
-                return;
+                return; // tunggu slider selesai (termasuk RETURNING)
             }
+            // Slider selesai — set angle + power di memory sekali lagi biar akurat
+            setAimAngle(anim_TargetAngle);
+            setPower(anim_TargetPower);
             triggerShot();
             stateStartTime = nowSec();
             fastShotState  = 3;
