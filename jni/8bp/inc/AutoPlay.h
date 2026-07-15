@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include "ScreenTable.h"
-#include "ButtonClicker.h"
+#include "mod/ButtonClicker.h"
 
 using namespace ImGui;
 
@@ -235,12 +235,18 @@ namespace AutoPlay {
     }
 
     void takeShot(double angle, double power) {
+        // Reset spin ke center sebelum tembak supaya tidak ada spin user yang campur
+        // dan menggeser lintasan dari prediksi
+        Vec2d centerSpin = {0.0, 0.0};
+        sharedGameManager.mVisualEnglishControl().mEnglish(centerSpin);
+
         setAimAngle(angle);
-        gPrediction->determineShotResult(false, angle, power);
+        // Pass spin yang sama supaya display lines konsisten dengan hasil scan
+        gPrediction->determineShotResult(false, angle, power, centerSpin);
         sharedGameManager.mVisualCue().mPower(ShotPowerToPower(power));
         M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
-        
-        // Log metrics for luxury tracking
+
+        // Log metrics
         g_AutoPlayMetrics.totalShotsAttempted++;
         g_AutoPlayMetrics.averagePower = (g_AutoPlayMetrics.averagePower * (g_AutoPlayMetrics.totalShotsAttempted - 1) + power) / g_AutoPlayMetrics.totalShotsAttempted;
     }
@@ -252,7 +258,8 @@ namespace AutoPlay {
     
     void Shoot(double angle, double power = 0.f) {
         setAimAngle(angle);
-        gPrediction->determineShotResult(false, angle, power);
+        // Pass spin {0,0} supaya display konsisten dengan scan yang juga pakai center spin
+        gPrediction->determineShotResult(false, angle, power, {0.0, 0.0});
 
         bool nominating = false;
         int nominationMode = sharedGameManager.getPocketNominationMode();
@@ -308,7 +315,9 @@ namespace AutoPlay {
 
             std::vector<double> powers = {666.0, 555.0, 444.0, 333.0, 222.0, 111.0};
             for (double power : powers) {
-                gPrediction->determineShotResult(true, angle, power, sharedGameManager.getShotSpin());
+                gPrediction->forceFullSimulation = true;
+                gPrediction->determineShotResult(true, angle, power, {0.0, 0.0});
+                gPrediction->forceFullSimulation = false;
                 
                 int targetIdx = -1;
                 bool isNineBallGame = myclass == Ball::Classification::NINE_BALL_RULE;
@@ -426,14 +435,16 @@ namespace AutoPlay {
         int steps = 0;
         bool foundShot = false;
         
-        while (steps < 16 && currentScanAngle < maxAngle) {
+        while (steps < 25 && currentScanAngle < maxAngle) {
             double angle = currentScanAngle;
             currentScanAngle += angleStep;
             steps++;
 
             std::vector<double> powers = {666.0, 466.0, 266.0, 100.0};
             for (double power : powers) {
-                gPrediction->determineShotResult(true, angle, power, sharedGameManager.getShotSpin());
+                gPrediction->forceFullSimulation = true;
+                gPrediction->determineShotResult(true, angle, power, {0.0, 0.0});
+                gPrediction->forceFullSimulation = false;
                 
                 bool isPotentiallyValid = false;
                 int targetIdx = -1;
@@ -594,7 +605,12 @@ namespace AutoPlay {
                 double tryAngle = NumberUtils::normalizeDoublePrecision(normalizeAngle(baseAngle + dA));
                 for (double pf : kPowers) {
                     double tryPower = std::min(std::max(cand.power * pf, 80.0), 666.0);
-                    gPrediction->determineShotResult(true, tryAngle, tryPower, sharedGameManager.getShotSpin(), cand);
+                    // forceFullSimulation=true hanya saat validasi di ScanFast:
+                    // supaya scratch dan posisi akhir bola terdeteksi benar
+                    // tanpa bikin ScanSlow jadi berat.
+                    gPrediction->forceFullSimulation = true;
+                    gPrediction->determineShotResult(true, tryAngle, tryPower, {0.0, 0.0}, cand);
+                    gPrediction->forceFullSimulation = false;
                     if (!gPrediction->firstHitIsTarget) continue;
                     if (!gPrediction->guiData.balls[0].onTable) continue;
 
@@ -665,68 +681,6 @@ namespace AutoPlay {
         }
     }
 
-    void DrawToggleButton() {
-        ImGuiIO& io = GetIO();
-        float padding = 30.0f;
-        int buttons = 1;
-        float button_size = ImGui::GetFrameHeight() * 2.3f;
-        float windowWidth = button_size * buttons + (buttons > 1 ? GetStyle().ItemSpacing.x * (buttons - 1) : 0) + GetStyle().WindowPadding.x * 2;
-        float windowHeight = button_size + GetStyle().WindowPadding.y * 2;
-
-        SetNextWindowPos(ImVec2(io.DisplaySize.x - 35 - windowWidth, io.DisplaySize.y - 20 - windowHeight), ImGuiCond_Always);
-        SetNextWindowPos(ImVec2(io.DisplaySize.x - 155 - windowWidth, io.DisplaySize.y - 20 - windowHeight), ImGuiCond_Always);
-        SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
-        
-        PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 0));
-        PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
-        PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
-        
-        if (Begin("AutoPlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
-            auto DrawPlayPauseButton = [&](bool isPause) -> bool {
-                ImVec2 pos = GetCursorScreenPos();
-                ImVec2 size(button_size, button_size);
-                ImVec2 end(pos.x + size.x, pos.y + size.y);
-                ImVec2 center(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f);
-                
-                // Since we are in a window with the bg set, we can just use standard button with colors
-                PushStyleColor(ImGuiCol_Button, IM_COL32(50, 50, 50, 180));
-                PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(80, 80, 80, 200));
-                PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(100, 100, 100, 200));
-                PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-                
-                bool clicked = Button("##AutoPlayBtn", size);
-                
-                ImDrawList* dl = GetWindowDrawList();
-                float h = size.y * 0.4f;
-                float w = h * 0.8f;
-
-                if (isPause) {
-                    float bar_w = w * 0.35f;
-                    float gap = w * 0.3f;
-                    dl->AddRectFilled(ImVec2(center.x - gap/2 - bar_w, center.y - h/2), ImVec2(center.x - gap/2, center.y + h/2), IM_COL32(255, 255, 255, 180));
-                    dl->AddRectFilled(ImVec2(center.x + gap/2, center.y - h/2), ImVec2(center.x + gap/2 + bar_w, center.y + h/2), IM_COL32(255, 255, 255, 180));
-                } else {
-                    float off_x = h * 0.3f;
-                    dl->AddTriangleFilled(ImVec2(center.x - off_x, center.y - h/2), ImVec2(center.x - off_x, center.y + h/2), ImVec2(center.x + off_x * 1.5f, center.y), IM_COL32(255, 255, 255, 180));
-                }
-                
-                GetForegroundDrawList()->AddRect(pos, end, IM_COL32(200, 200, 200, 255), 5.0f, 0, 2.0f);
-                
-                PopStyleColor(4);
-                return clicked;
-            };
-
-            if (DrawPlayPauseButton(bAutoPlaying)) {
-                bAutoPlaying = !bAutoPlaying;
-                if (bAutoPlaying) ClearState();
-                // if (!bAutoPlaying && powerSlider.Active) powerSlider.Cancel();
-            }
-        } End();
-
-        PopStyleVar();
-        PopStyleColor(2);
-    }
-
     bool isAnimationActive() {
         auto visualCue = sharedGameManager.mVisualCue();
         if (!visualCue) return true;
@@ -738,7 +692,6 @@ namespace AutoPlay {
 
     void Update() {
         buttonClicker.Update();
-        DrawToggleButton();
 
         if (isAnimationActive()) return;
 
