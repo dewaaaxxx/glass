@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include "ScreenTable.h"
-#include "ButtonClicker.h"
+#include "mod/ButtonClicker.h"
 
 using namespace ImGui;
 
@@ -43,14 +43,13 @@ constexpr double IMPACT_FORCE_THRESHOLD = 2.0;          // Detect dynamic collis
  * Where: μ = friction coefficient, g = gravity, d = distance, s = spin factor, k = english multiplier
  */
 inline double CalculateOptimalPowerAdvanced(double distance, double spinFactor = 0.0, double englishInfluence = 1.0) {
-    double effectiveDistance = distance + (ENGLISH_MULTIPLIER * englishInfluence * abs(spinFactor) * 0.5);
-    double optimalPower = sqrt(2.0 * FRICTION_COEFFICIENT * GRAVITATIONAL_CONSTANT * effectiveDistance);
-    
-    // Apply exponential curve for smoother power delivery
-    optimalPower = optimalPower * (1.0 + (spinFactor * 0.1));
-    
-    // Cap at maximum safe power
-    return std::min(optimalPower, 666.0);
+    // Pakai 196.0 = sliding deceleration constant dari engine (bukan friction*gravity).
+    // Formula yang lama: sqrt(2 * 0.12 * 9.81 * dist) → hasil ~9x terlalu kecil
+    // → bola selalu berhenti jauh sebelum pocket.
+    double p = sqrt(2.0 * BALL_DECELERATION * distance);
+    if (p < 80.0) p = 80.0;
+    if (p > 666.0) p = 666.0;
+    return p;
 }
 
 /**
@@ -427,7 +426,7 @@ namespace AutoPlay {
         int steps = 0;
         bool foundShot = false;
         
-        while (steps < 10 && currentScanAngle < maxAngle) {
+        while (steps < 40 && currentScanAngle < maxAngle) {
             double angle = currentScanAngle;
             currentScanAngle += angleStep;
             steps++;
@@ -516,6 +515,7 @@ namespace AutoPlay {
         if (!foundShot && currentScanAngle >= maxAngle) {
             isScanning = false;
             currentScanAngle = 0.0;
+            lastFailedCuePos = { -1000.0, -1000.0 };
             state = IDLE;
         }
     }
@@ -575,157 +575,116 @@ namespace AutoPlay {
             }
         }
         
-        // EXPLOSIVE RANKING: Sort with advanced physics-based scoring
-        std::sort(candidates.begin(), candidates.end(), [&](const Candidate& a, const Candidate& b) {
-            double scoreA = RankCandidate(a, a.power, true, ballsRemaining, spinMagnitude);
-            double scoreB = RankCandidate(b, b.power, true, ballsRemaining, spinMagnitude);
-            return scoreA > scoreB;  // Descending order (best first)
-        });
+        // Sort berdasarkan total jarak — kandidat terdekat paling mudah masuk
+        std::sort(candidates.begin(), candidates.end());
         
+        // Angle refinement ±1°/±2° dan power sweep untuk akurasi
+        static const double kAngles[] = {0.0, -0.0175, +0.0175, -0.035, +0.035};
+        static const double kPowers[] = {1.0, 1.2, 0.85, 1.4, 0.7, 1.6, 0.55};
+
         bool foundShot = false;
         for (const auto& cand : candidates) {
-            double angle = NumberUtils::normalizeDoublePrecision(normalizeAngle(cand.angle));
-            gPrediction->determineShotResult(true, angle, cand.power, sharedGameManager.getShotSpin(), cand);
-            if (!gPrediction->firstHitIsTarget) continue;
-            if (!gPrediction->guiData.balls[0].onTable) continue;
+            double baseAngle = NumberUtils::normalizeDoublePrecision(normalizeAngle(cand.angle));
+            bool simOk = false;
+            double usedAngle = baseAngle;
+            double usedPower = cand.power;
 
-            if (isNineBallGame) {
-                auto firstHit = gPrediction->guiData.collision.firstHitBall;
-                if (!firstHit || firstHit->index != cand.idx) continue;
+            for (double dA : kAngles) {
+                if (simOk) break;
+                double tryAngle = NumberUtils::normalizeDoublePrecision(normalizeAngle(baseAngle + dA));
+                for (double pf : kPowers) {
+                    double tryPower = std::min(std::max(cand.power * pf, 80.0), 666.0);
+                    gPrediction->determineShotResult(true, tryAngle, tryPower, sharedGameManager.getShotSpin(), cand);
+                    if (!gPrediction->firstHitIsTarget) continue;
+                    if (!gPrediction->guiData.balls[0].onTable) continue;
 
-                int bestPottedIdx = -1;
-                for (int i = 1; i < gPrediction->guiData.ballsCount; i++) {
-                    auto& ball = gPrediction->guiData.balls[i];
-                    if (ball.originalOnTable && !ball.onTable) {
-                        if (nominatedPocket < 6 && ball.pocketIndex != nominatedPocket) continue;
-                        if (i == 9) { bestPottedIdx = 9; break; }
-                        if (bestPottedIdx == -1 || i == cand.idx) bestPottedIdx = i;
+                    if (isNineBallGame) {
+                        auto firstHit = gPrediction->guiData.collision.firstHitBall;
+                        if (!firstHit || firstHit->index != cand.idx) continue;
+                        int bestPottedIdx = -1;
+                        for (int i = 1; i < gPrediction->guiData.ballsCount; i++) {
+                            auto& ball = gPrediction->guiData.balls[i];
+                            if (ball.originalOnTable && !ball.onTable) {
+                                if (nominatedPocket < 6 && ball.pocketIndex != nominatedPocket) continue;
+                                if (i == 9) { bestPottedIdx = 9; break; }
+                                if (bestPottedIdx == -1 || i == cand.idx) bestPottedIdx = i;
+                            }
+                        }
+                        if (bestPottedIdx == -1) continue;
+                        usedAngle = tryAngle; usedPower = tryPower; simOk = true;
+                        g_CurrentCandidate = cand;
+                        g_CurrentCandidate.idx = bestPottedIdx;
+                        g_CurrentCandidate.angle = usedAngle;
+                        g_CurrentCandidate.power = usedPower;
+                        g_CurrentCandidate.pocketIndex = gPrediction->guiData.balls[bestPottedIdx].pocketIndex;
+                        foundShot = true;
+                        Shoot(usedAngle, usedPower);
+                        goto fastDone;
                     }
+
+                    if (gPrediction->guiData.balls[cand.idx].onTable) continue;
+                    if (gPrediction->guiData.balls[cand.idx].pocketIndex != cand.pocketIndex) continue;
+
+                    {
+                        bool isAngleGood = false;
+                        for (int i = 1; i < gPrediction->guiData.ballsCount; i++) {
+                            Prediction::Ball& ball = gPrediction->guiData.balls[i];
+                            bool match = (myclass == Ball::Classification::ANY)
+                                ? (ball.classification != Ball::Classification::CUE_BALL && ball.classification != Ball::Classification::EIGHT_BALL)
+                                : (ball.classification == myclass);
+                            if (match && ball.originalOnTable && !ball.onTable) { isAngleGood = true; break; }
+                        }
+                        if (isAngleGood && gPrediction->guiData.collision.firstHitBall) {
+                            auto fh = gPrediction->guiData.collision.firstHitBall;
+                            if (myclass != Ball::Classification::ANY && fh->classification != myclass) isAngleGood = false;
+                            else if (myclass == Ball::Classification::ANY && fh->classification == Ball::Classification::EIGHT_BALL) isAngleGood = false;
+                        }
+                        if (isAngleGood && !gPrediction->guiData.balls[0].onTable) isAngleGood = false;
+                        auto& ball8 = gPrediction->guiData.balls[8];
+                        if (isAngleGood && ball8.originalOnTable && !ball8.onTable && myclass != Ball::Classification::EIGHT_BALL) isAngleGood = false;
+                        if (!isAngleGood) continue;
+                    }
+
+                    usedAngle = tryAngle; usedPower = tryPower; simOk = true;
+                    break;
                 }
-                if (bestPottedIdx == -1) continue;
-                g_CurrentCandidate = cand;
-                g_CurrentCandidate.idx = bestPottedIdx;
-                g_CurrentCandidate.pocketIndex = gPrediction->guiData.balls[bestPottedIdx].pocketIndex;
-                foundShot = true;
-                Shoot(angle, cand.power);
-                break;
             }
 
-            if (gPrediction->guiData.balls[cand.idx].onTable) continue;
-            if (gPrediction->guiData.balls[cand.idx].pocketIndex != cand.pocketIndex) continue;
-
-            bool isAngleGood = false;
-            for (int i = 1; i < gPrediction->guiData.ballsCount; i++) {
-                Prediction::Ball& ball = gPrediction->guiData.balls[i];
-                bool match = (myclass == Ball::Classification::ANY) ? (ball.classification != Ball::Classification::CUE_BALL && ball.classification != Ball::Classification::EIGHT_BALL) : (ball.classification == myclass);
-                if (match && ball.originalOnTable && !ball.onTable) isAngleGood = true;
-            }
-
-            if (isAngleGood && gPrediction->guiData.collision.firstHitBall) {
-                 auto firstHit = gPrediction->guiData.collision.firstHitBall;
-                 if (myclass != Ball::Classification::ANY && firstHit->classification != myclass) isAngleGood = false;
-                 else if (myclass == Ball::Classification::ANY && firstHit->classification == Ball::Classification::EIGHT_BALL) isAngleGood = false;
-            }
-
-            if (isAngleGood && !gPrediction->guiData.balls[0].onTable) isAngleGood = false;
-            
-            auto& eightBallRef = gPrediction->guiData.balls[8];
-            if (isAngleGood && (eightBallRef.originalOnTable && !eightBallRef.onTable) && myclass != Ball::Classification::EIGHT_BALL) isAngleGood = false;
-            
-            if (isAngleGood) {
-                g_CurrentCandidate = cand;
-                foundShot = true;
-                Shoot(angle, cand.power);
-                break;
-            }
+            if (!simOk) continue;
+            g_CurrentCandidate = cand;
+            g_CurrentCandidate.angle = usedAngle;
+            g_CurrentCandidate.power = usedPower;
+            foundShot = true;
+            Shoot(usedAngle, usedPower);
+            break;
         }
-
+        fastDone:
         if (!foundShot) {
             lastFailedCuePos = cueBall.initialPosition;
             scan = SLOW;
         }
     }
 
-    void DrawToggleButton() {
-        ImGuiIO& io = GetIO();
-        float padding = 30.0f;
-        int buttons = 1;
-        float button_size = ImGui::GetFrameHeight() * 2.3f;
-        float windowWidth = button_size * buttons + (buttons > 1 ? GetStyle().ItemSpacing.x * (buttons - 1) : 0) + GetStyle().WindowPadding.x * 2;
-        float windowHeight = button_size + GetStyle().WindowPadding.y * 2;
-
-        SetNextWindowPos(ImVec2(io.DisplaySize.x - 35 - windowWidth, io.DisplaySize.y - 20 - windowHeight), ImGuiCond_Always);
-        SetNextWindowPos(ImVec2(io.DisplaySize.x - 155 - windowWidth, io.DisplaySize.y - 20 - windowHeight), ImGuiCond_Always);
-        SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
-        
-        PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 0));
-        PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
-        PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
-        
-        if (Begin("AutoPlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
-            auto DrawPlayPauseButton = [&](bool isPause) -> bool {
-                ImVec2 pos = GetCursorScreenPos();
-                ImVec2 size(button_size, button_size);
-                ImVec2 end(pos.x + size.x, pos.y + size.y);
-                ImVec2 center(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f);
-                
-                // Since we are in a window with the bg set, we can just use standard button with colors
-                PushStyleColor(ImGuiCol_Button, IM_COL32(50, 50, 50, 180));
-                PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(80, 80, 80, 200));
-                PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(100, 100, 100, 200));
-                PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-                
-                bool clicked = Button("##AutoPlayBtn", size);
-                
-                ImDrawList* dl = GetWindowDrawList();
-                float h = size.y * 0.4f;
-                float w = h * 0.8f;
-
-                if (isPause) {
-                    float bar_w = w * 0.35f;
-                    float gap = w * 0.3f;
-                    dl->AddRectFilled(ImVec2(center.x - gap/2 - bar_w, center.y - h/2), ImVec2(center.x - gap/2, center.y + h/2), IM_COL32(255, 255, 255, 180));
-                    dl->AddRectFilled(ImVec2(center.x + gap/2, center.y - h/2), ImVec2(center.x + gap/2 + bar_w, center.y + h/2), IM_COL32(255, 255, 255, 180));
-                } else {
-                    float off_x = h * 0.3f;
-                    dl->AddTriangleFilled(ImVec2(center.x - off_x, center.y - h/2), ImVec2(center.x - off_x, center.y + h/2), ImVec2(center.x + off_x * 1.5f, center.y), IM_COL32(255, 255, 255, 180));
-                }
-                
-                GetForegroundDrawList()->AddRect(pos, end, IM_COL32(200, 200, 200, 255), 5.0f, 0, 2.0f);
-                
-                PopStyleColor(4);
-                return clicked;
-            };
-
-            if (DrawPlayPauseButton(bAutoPlaying)) {
-                bAutoPlaying = !bAutoPlaying;
-                if (bAutoPlaying) ClearState();
-                // if (!bAutoPlaying && powerSlider.Active) powerSlider.Cancel();
-            }
-        } End();
-
-        PopStyleVar();
-        PopStyleColor(2);
-    }
-
     bool isAnimationActive() {
         auto visualCue = sharedGameManager.mVisualCue();
-        if (!visualCue) return true;
+        if (!visualCue) return false;
         auto _powerBarView = F(ptr, visualCue + 0x510);
-        if (!_powerBarView) return true;
-        
+        if (!_powerBarView) return false;
         uintptr_t activeAction = M(uintptr_t, libmain + 0x2de6f30, ptr)(_powerBarView);
-        return (activeAction != 0); 
+        return (activeAction != 0);
     }
-    
+
     void Update() {
         buttonClicker.Update();
-        DrawToggleButton();
 
         if (isAnimationActive()) return;
 
         if (!bAutoPlaying || !sharedGameManager.mStateManager().isPlayerTurn()) {
+            // Reset semua state saat giliran berakhir
+            g_CurrentCandidate.idx = -1;
+            lastFailedCuePos = { -1000.0, -1000.0 };
             state = IDLE;
+            scan = FAST;
             return;
         }
 
