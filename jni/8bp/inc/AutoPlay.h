@@ -426,7 +426,7 @@ namespace AutoPlay {
         int steps = 0;
         bool foundShot = false;
         
-        while (steps < 40 && currentScanAngle < maxAngle) {
+        while (steps < 16 && currentScanAngle < maxAngle) {
             double angle = currentScanAngle;
             currentScanAngle += angleStep;
             steps++;
@@ -729,9 +729,9 @@ namespace AutoPlay {
 
     bool isAnimationActive() {
         auto visualCue = sharedGameManager.mVisualCue();
-        if (!visualCue) return false;
+        if (!visualCue) return true;
         auto _powerBarView = F(ptr, visualCue + 0x510);
-        if (!_powerBarView) return false;
+        if (!_powerBarView) return true;
         uintptr_t activeAction = M(uintptr_t, libmain + 0x2de6f30, ptr)(_powerBarView);
         return (activeAction != 0);
     }
@@ -743,13 +743,14 @@ namespace AutoPlay {
         if (isAnimationActive()) return;
 
         if (!bAutoPlaying || !sharedGameManager.mStateManager().isPlayerTurn()) {
-            // Reset semua state saat giliran berakhir
-            g_CurrentCandidate.idx = -1;
-            lastFailedCuePos = { -1000.0, -1000.0 };
-            state = IDLE;
-            scan = FAST;
+            // Hanya reset kalau state bukan IDLE — hindari reset berulang tiap frame
+            if (state != IDLE) {
+                g_CurrentCandidate.idx = -1;
+                lastFailedCuePos = { -1000.0, -1000.0 };
+                scan = FAST;
+                state = IDLE;
+            }
             return;
-        }
 
         if (state == IDLE) {
             state = SCANNING;
