@@ -7,11 +7,11 @@
 #include <Vector/Vectors.h>
 #include <vector>
 
-#include "8bp/Ball.h"
+#include "game/Ball.h"
 
 #include <imgui/inc/persistence.h>
 
-#include "8bp/GameManager.h"
+#include "game/GameManager.h"
 
 static Vec4d table_bounds;
 static bool fastCalc = true;
@@ -116,6 +116,7 @@ float Prediction::shotResult[MAX_SHOT_RESULT_SIZE];
 static double prevAngle = 0.0;
 static double prevPower = 0.0;
 static Point2D prevSpin = {0.0, 0.0};
+static bool prevIsAuto = false;   // ← adaugă asta
 
 // constexpr double dword_35B7988 = 0.54;
 // constexpr double dword_35B7978 = 0.804;
@@ -123,8 +124,13 @@ static Point2D prevSpin = {0.0, 0.0};
 /* PREDICTION PUBLIC METHODS ==================================================================== */
 
 bool Prediction::determineShotResult(bool isAuto, double shotAngle, double shotPower, Vec2d shotSpin, Candidate cand) { // returns isShouldReDraw
-    if (shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin) return false;
-    prevAngle = shotAngle, prevPower = shotPower, prevSpin = shotSpin;
+        if (shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin && isAuto == prevIsAuto)
+        return false;  // ← include isAuto în comparație
+
+    prevAngle = shotAngle;
+    prevPower = shotPower;
+    prevSpin  = shotSpin;
+    prevIsAuto = isAuto;   // ← salvează și asta
 
     this->m_candidate = cand;
     fastCalc = isAuto;
@@ -174,19 +180,15 @@ void Prediction::initBalls() {
         ball.predictedPosition = ball.initialPosition;
         ball.velocity.nullify();
         ball.spin.nullify();
-        if (!ball.positions.empty()) {
-            ball.positions.clear();
-            ball.positions.shrink_to_fit(); // release memory every simulation cycle
-        }
-        ball.positions.reserve(64);
+        if (!ball.positions.empty()) ball.positions.clear();
+        ball.positions.reserve(20);
         ball.positions.push_back(ball.initialPosition);
     }
 }
 
 void Prediction::initCueBall(double shotAngle, double shotPower, const Point2D &shotSpin) {
-    // Removed aggressive rounding (was 4 decimal places = ~0.006 degree error compounded over distance)
-    double angleCos = cos(shotAngle);
-    double angleSin = sin(shotAngle);
+    double angleCos = round(cos(shotAngle) * 10000.0) / 10000.0;
+    double angleSin = round(sin(shotAngle) * 10000.0) / 10000.0;
     Ball &cueBall = this->guiData.balls[0];
     cueBall.velocity.x = shotPower * angleCos;
     cueBall.velocity.y = shotPower * angleSin;
@@ -225,8 +227,7 @@ void Prediction::determineBallsPositions() {
                 this->handleCollision();
                 if (this->guiData.collision.firstHitBall != nullptr && this->m_candidate.idx != -1) {
                     this->firstHitIsTarget = (this->guiData.collision.firstHitBall->index == this->m_candidate.idx);
-                    // Don't early-return: let simulation complete so pocket result is known.
-                    // Caller checks firstHitIsTarget after determineShotResult returns.
+                    if (!this->firstHitIsTarget) return;
                 }
             }
             time -= time2;
