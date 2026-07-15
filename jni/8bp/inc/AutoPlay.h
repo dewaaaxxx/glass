@@ -751,6 +751,7 @@ namespace AutoPlay {
                 state = IDLE;
             }
             return;
+        }
 
         if (state == IDLE) {
             state = SCANNING;
