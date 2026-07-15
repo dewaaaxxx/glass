@@ -17,6 +17,8 @@ static Vec4d table_bounds;
 static bool fastCalc = true;
 
 struct Prediction {
+    static bool forceFullSimulation; // ← TAMBAHKAN
+
     static bool pocketStatus[TABLE_POCKETS_COUNT];
 
     Prediction() = default;
@@ -124,7 +126,7 @@ static bool prevIsAuto = false;   // ← adaugă asta
 /* PREDICTION PUBLIC METHODS ==================================================================== */
 
 bool Prediction::determineShotResult(bool isAuto, double shotAngle, double shotPower, Vec2d shotSpin, Candidate cand) { // returns isShouldReDraw
-        if (shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin && isAuto == prevIsAuto)
+        if(!forceFullSimulation && shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin && isAuto == prevIsAuto)
         return false;  // ← include isAuto în comparație
 
     prevAngle = shotAngle;
@@ -227,7 +229,7 @@ void Prediction::determineBallsPositions() {
                 this->handleCollision();
                 if (this->guiData.collision.firstHitBall != nullptr && this->m_candidate.idx != -1) {
                     this->firstHitIsTarget = (this->guiData.collision.firstHitBall->index == this->m_candidate.idx);
-                    if (!this->firstHitIsTarget) return;
+                   // if (!this->firstHitIsTarget) return;
                 }
             }
             time -= time2;
