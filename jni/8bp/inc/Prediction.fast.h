@@ -17,7 +17,6 @@ static Vec4d table_bounds;
 static bool fastCalc = true;
 
 struct Prediction {
-    static bool forceFullSimulation; // ← TAMBAHKAN
 
     static bool pocketStatus[TABLE_POCKETS_COUNT];
 
@@ -98,6 +97,8 @@ struct Prediction {
     bool firstHitIsTarget = false;
     Candidate m_candidate = {-1};
 
+    bool forceFullSimulation = false;
+
     void calculateShotResultSize();
     void initBalls();
     void initCueBall(double shotAngle, double shotPower, const Point2D& shotSpin);
@@ -126,8 +127,10 @@ static bool prevIsAuto = false;   // ← adaugă asta
 /* PREDICTION PUBLIC METHODS ==================================================================== */
 
 bool Prediction::determineShotResult(bool isAuto, double shotAngle, double shotPower, Vec2d shotSpin, Candidate cand) { // returns isShouldReDraw
-        if(!forceFullSimulation && shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin && isAuto == prevIsAuto)
-        return false;  // ← include isAuto în comparație
+        if (!forceFullSimulation) {
+        if (shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin && isAuto == prevIsAuto)
+            return false;
+        }
 
     prevAngle = shotAngle;
     prevPower = shotPower;
@@ -135,8 +138,8 @@ bool Prediction::determineShotResult(bool isAuto, double shotAngle, double shotP
     prevIsAuto = isAuto;   // ← salvează și asta
 
     this->m_candidate = cand;
-    fastCalc = isAuto;
-
+    fastCalc = forceFullSimulation ? false : isAuto;
+    
     this->initBalls();
     this->initCueBall(shotAngle, shotPower, shotSpin);
     this->guiData.collision.firstHitBall = nullptr;
@@ -229,7 +232,7 @@ void Prediction::determineBallsPositions() {
                 this->handleCollision();
                 if (this->guiData.collision.firstHitBall != nullptr && this->m_candidate.idx != -1) {
                     this->firstHitIsTarget = (this->guiData.collision.firstHitBall->index == this->m_candidate.idx);
-                   // if (!this->firstHitIsTarget) return;
+                    if (!this->firstHitIsTarget && !this->forceFullSimulation) return;
                 }
             }
             time -= time2;
