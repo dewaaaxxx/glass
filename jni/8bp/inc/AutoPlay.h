@@ -37,6 +37,10 @@ enum BallType {
     INVALID = -1
 };
 
+static double EaseInOutCubic(double t) {
+    return t < 0.5 ? 4 * t * t * t : 1.0 - pow(-2.0 * t + 2.0, 3.0) / 2.0;
+}
+
 constexpr double maxAngle = 360.0 / (180.0 / M_PI);
 
 double normalizeAngle(double angle) {
