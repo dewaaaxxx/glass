@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include "ScreenTable.h"
-#include "ButtonClicker.h"
+#include "mod/ButtonClicker.h"
 
 using namespace ImGui;
 
@@ -298,16 +298,10 @@ namespace AutoPlay {
                     }
 
                     if (bestPottedIdx == -1) continue;
-                    
-                    double qualityScore = CalculateShotQualityScore(
-                        sqrt(power),
-                        1.0,
-                        0.0,
-                        spinMagnitude,
-                        true,
-                        gPrediction->guiData.ballsCount - 1
-                    );
-                    
+
+                    // Score: lebih kecil = lebih baik (shot pendek diprioritaskan)
+                    double qualityScore = -(power * 0.01 + (double)bestPottedIdx);
+
                     if (qualityScore > bestQualityScore) {
                         bestQualityScore = qualityScore;
                         bestCandidate = {bestPottedIdx, angle, (double)power, (uint)gPrediction->guiData.balls[bestPottedIdx].pocketIndex};
@@ -337,15 +331,9 @@ namespace AutoPlay {
                         if (firstHit->classification == Ball::Classification::EIGHT_BALL) continue;
                     } else if (firstHit->classification != myclass) continue;
 
-                    double qualityScore = CalculateShotQualityScore(
-                        sqrt(power),
-                        1.0,
-                        0.0,
-                        spinMagnitude,
-                        true,
-                        gPrediction->guiData.ballsCount - 1
-                    );
-                    
+                    // Score: lebih kecil = lebih baik
+                    double qualityScore = -(power * 0.01 + (double)targetIdx);
+
                     if (qualityScore > bestQualityScore) {
                         bestQualityScore = qualityScore;
                         bestCandidate = {targetIdx, angle, (double)power, (uint)gPrediction->guiData.balls[targetIdx].pocketIndex};
@@ -621,68 +609,6 @@ namespace AutoPlay {
             scan = SLOW;
         }
     }
-    
-    void DrawToggleButton() {
-        ImGuiIO& io = GetIO();
-        float padding = 30.0f;
-        int buttons = 1;
-        float button_size = ImGui::GetFrameHeight() * 2.3f;
-        float windowWidth = button_size * buttons + (buttons > 1 ? GetStyle().ItemSpacing.x * (buttons - 1) : 0) + GetStyle().WindowPadding.x * 2;
-        float windowHeight = button_size + GetStyle().WindowPadding.y * 2;
-
-        SetNextWindowPos(ImVec2(io.DisplaySize.x - 35 - windowWidth, io.DisplaySize.y - 20 - windowHeight), ImGuiCond_Always);
-        SetNextWindowPos(ImVec2(io.DisplaySize.x - 155 - windowWidth, io.DisplaySize.y - 20 - windowHeight), ImGuiCond_Always);
-        SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
-        
-        PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 0));
-        PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
-        PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
-        
-        if (Begin("AutoPlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
-            auto DrawPlayPauseButton = [&](bool isPause) -> bool {
-                ImVec2 pos = GetCursorScreenPos();
-                ImVec2 size(button_size, button_size);
-                ImVec2 end(pos.x + size.x, pos.y + size.y);
-                ImVec2 center(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f);
-                
-                // Since we are in a window with the bg set, we can just use standard button with colors
-                PushStyleColor(ImGuiCol_Button, IM_COL32(50, 50, 50, 180));
-                PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(80, 80, 80, 200));
-                PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(100, 100, 100, 200));
-                PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-                
-                bool clicked = Button("##AutoPlayBtn", size);
-                
-                ImDrawList* dl = GetWindowDrawList();
-                float h = size.y * 0.4f;
-                float w = h * 0.8f;
-
-                if (isPause) {
-                    float bar_w = w * 0.35f;
-                    float gap = w * 0.3f;
-                    dl->AddRectFilled(ImVec2(center.x - gap/2 - bar_w, center.y - h/2), ImVec2(center.x - gap/2, center.y + h/2), IM_COL32(255, 255, 255, 180));
-                    dl->AddRectFilled(ImVec2(center.x + gap/2, center.y - h/2), ImVec2(center.x + gap/2 + bar_w, center.y + h/2), IM_COL32(255, 255, 255, 180));
-                } else {
-                    float off_x = h * 0.3f;
-                    dl->AddTriangleFilled(ImVec2(center.x - off_x, center.y - h/2), ImVec2(center.x - off_x, center.y + h/2), ImVec2(center.x + off_x * 1.5f, center.y), IM_COL32(255, 255, 255, 180));
-                }
-                
-                GetForegroundDrawList()->AddRect(pos, end, IM_COL32(200, 200, 200, 255), 5.0f, 0, 2.0f);
-                
-                PopStyleColor(4);
-                return clicked;
-            };
-
-            if (DrawPlayPauseButton(bAutoPlaying)) {
-                bAutoPlaying = !bAutoPlaying;
-                if (bAutoPlaying) ClearState();
-                // if (!bAutoPlaying && powerSlider.Active) powerSlider.Cancel();
-            }
-        } End();
-
-        PopStyleVar();
-        PopStyleColor(2);
-    }
 
     bool isAnimationActive() {
         auto visualCue = sharedGameManager.mVisualCue();
@@ -696,7 +622,6 @@ namespace AutoPlay {
     
     void Update() {
         buttonClicker.Update();
-        DrawToggleButton();
 
         if (isAnimationActive()) return;
 
