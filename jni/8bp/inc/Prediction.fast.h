@@ -7,11 +7,11 @@
 #include <Vector/Vectors.h>
 #include <vector>
 
-#include "8bp/Ball.h"
+#include "game/Ball.h"
 
 #include <imgui/inc/persistence.h>
 
-#include "8bp/GameManager.h"
+#include "game/GameManager.h"
 
 static Vec4d table_bounds;
 static bool fastCalc = true;
@@ -96,11 +96,6 @@ struct Prediction {
     bool firstHitIsTarget = false;
     Candidate m_candidate = {-1};
 
-    // forceFullSimulation=true → fastCalc=false, skip cache → simulasi penuh.
-    // Di-set true oleh AutoPlay sebelum determineShotResult untuk scan/safety check,
-    // lalu di-set false setelahnya. Default false = behavior normal.
-    bool forceFullSimulation = false;
-
     void calculateShotResultSize();
     void initBalls();
     void initCueBall(double shotAngle, double shotPower, const Point2D& shotSpin);
@@ -129,21 +124,16 @@ static bool prevIsAuto = false;   // ← adaugă asta
 /* PREDICTION PUBLIC METHODS ==================================================================== */
 
 bool Prediction::determineShotResult(bool isAuto, double shotAngle, double shotPower, Vec2d shotSpin, Candidate cand) { // returns isShouldReDraw
-    // FIX: skip cache saat forceFullSimulation, dan include cand.idx supaya
-    // dua kandidat dengan angle/power sama tapi target beda tidak tabrakan cache.
-    if (!forceFullSimulation) {
-        if (shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin
-            && isAuto == prevIsAuto && cand.idx == m_candidate.idx)
-            return false;
-    }
+        if (shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin && isAuto == prevIsAuto)
+        return false;  // ← include isAuto în comparație
+
     prevAngle = shotAngle;
     prevPower = shotPower;
     prevSpin  = shotSpin;
     prevIsAuto = isAuto;   // ← salvează și asta
 
     this->m_candidate = cand;
-    // FIX: forceFullSimulation override fastCalc → simulasi penuh, tidak partial
-    fastCalc = forceFullSimulation ? false : isAuto;
+    fastCalc = isAuto;
 
     this->initBalls();
     this->initCueBall(shotAngle, shotPower, shotSpin);
@@ -237,10 +227,7 @@ void Prediction::determineBallsPositions() {
                 this->handleCollision();
                 if (this->guiData.collision.firstHitBall != nullptr && this->m_candidate.idx != -1) {
                     this->firstHitIsTarget = (this->guiData.collision.firstHitBall->index == this->m_candidate.idx);
-                    // FIX: jangan early return saat forceFullSimulation=true.
-                    // Early return bikin posisi bola tidak dilanjutkan ke pocket →
-                    // lines kelihatan masuk tapi bola tidak sampai → prediction meleset.
-                    if (!this->firstHitIsTarget && !this->forceFullSimulation) return;
+                    if (!this->firstHitIsTarget) return;
                 }
             }
             time -= time2;
@@ -298,73 +285,6 @@ void Prediction::handleBallBallCollision() const {
     ballB.velocity.x = velocityA.x - (velocityB.x - ballB.velocity.x);
     ballB.velocity.y = velocityA.y - (velocityB.y - ballB.velocity.y);
 }
-
-/* void Prediction::determineShotState() {
-    this->guiData.shotState = false;
-    // cue ball didn't hit any other ball
-    if (this->guiData.collision.firstHitBall == nullptr) {
-        return;
-    }
-    // cue ball potted
-    if (!this->guiData.balls[0].onTable) {
-        return;
-    }
-    ::Ball::Classification playerClassification = MemoryManager::GameManager::getPlayerClassification();
-    // 8-ball before break
-    if (playerClassification == BallClassification::ANY) {
-        if (this->guiData.collision.firstHitBall->classification ==
-            BallClassification::EIGHT_BALL) {
-            return;
-        }
-        for (int i = 0; i < this->guiData.ballsCount; i++) {
-            Ball &ball = this->guiData.balls[i];
-            // any ball except 8-ball has been potted during current shot
-            if (ball.originalOnTable != ball.onTable) {
-                this->guiData.shotState = this->guiData.balls[8].onTable;
-                return;
-            }
-        }
-    } else {
-        // after break
-        if (this->guiData.collision.firstHitBall->classification != playerClassification) {
-            return;
-        }
-        // 9-ball mode
-        if (playerClassification == BallClassification::NINE_BALL_RULE) {
-            for (int i = 1; i < this->guiData.ballsCount; i++) {
-                Ball &ball = this->guiData.balls[i];
-                // ball has been potted during current shot
-                if (ball.originalOnTable != ball.onTable) {
-                    this->guiData.shotState = true;
-                    return;
-                }
-            }
-            return;
-        }
-    }
-    // 8-ball mode after break
-    if (playerClassification == BallClassification::EIGHT_BALL) {
-        // 8-ball has been potted during current shot
-        this->guiData.shotState = !this->guiData.balls[8].onTable;
-        return;
-    }
-    // to only check balls with correct classification
-    int startBall = (playerClassification == BallClassification::SOLID) ? 1 : 9;
-    for (int i = startBall; i < startBall + 7; i++) {
-        Ball &ball = this->guiData.balls[i];
-        // any ball except 8-ball has been potted during current shot
-        if (ball.originalOnTable != ball.onTable) {
-            this->guiData.shotState = this->guiData.balls[8].onTable;
-            return;
-        }
-    }
-} */
-
-/* ============================================================================================== */
-
-/* ============================================================================================== */
-
-/* BALL PUBLIC METHODS ========================================================================== */
 
 const std::array<Point2D, TABLE_POCKETS_COUNT>& getPockets() {
     static const std::array<Point2D, TABLE_POCKETS_COUNT> POCKET_POSITIONS = {
@@ -481,67 +401,6 @@ void Prediction::Ball::findNextCollision(void *pData, double *time) {
     }
 }
 
-/* void Prediction::Ball::calcVelocity() {
-    if (!this->isMovingOrSpinning()) {
-        return;
-    }
-    
-    double v15 = BALL_RADIUS * this->spin.x - this->velocity.y;
-    double v16 = -this->velocity.x - this->spin.y * BALL_RADIUS;
-    double v17 = sqrt(v16 * v16 + v15 * v15);
-    double v18 = v17 * 0.0014577259475218659; // _frictionProperties._timeOfequilibriumFactor
-    if (v18 > unk_35B3F80) {
-        double v20 = (v18 < TIME_PER_TICK) ? (v17 * 0.0014577259475218659) : TIME_PER_TICK;
-        double v21 = 196.0 * v20 / v17; // _frictionProperties._velocityReductionSlidingFactor
-        double v22 = v16 * v21;
-        double v23 = v15 * v21;
-        this->velocity.x += v22;
-        this->velocity.y += v23;
-        this->spin.x -= v23 * 0.6578125102783204; // unk_35B3F88 / BALL_RADIUS
-        this->spin.y += v22 * 0.6578125102783204; // unk_35B3F88 / BALL_RADIUS
-    }
-    if (v18 < TIME_PER_TICK) {
-        double v24 = this->velocity.x;
-        double v25 = this->velocity.y;
-        double v27 = (TIME_PER_TICK - v18) * 10.878; // frictionProperties._velocityReductionRollingFactor
-        double v28 = 1.0 - v27 / sqrt(v25 * v25 + v24 * v24);
-        v28 = (v28 < 0.0) ? 0.0 : v28;
-        this->velocity.x = v24 * v28;
-        this->velocity.y = v25 * v28;
-        this->spin.x = v25 * v28 / BALL_RADIUS;
-        this->spin.y = -(v24 * v28) / BALL_RADIUS;
-    }
-    constexpr double v29 = 9.8 * TIME_PER_TICK; // frictionProperties._deltaSpinFactor
-    this->spin.z = (this->spin.z > 0.0) ? fmax(this->spin.z - v29, 0.0) : fmin(this->spin.z + v29, 0.0);
-} */
-
-// DAT_04c8b9a8 2.0E
-// FUN_02b1bb3c
-/* void Prediction::Ball::calcVelocityPostCollision(const double &angle) {
-    double angleCos = round(cos(angle) * 10000.0) / 10000.0;
-    double angleSin = round(sin(angle) * 10000.0) / 10000.0;
-    double velocityX = angleCos * this->velocity.x - angleSin * this->velocity.y;
-    double velocityY = angleSin * this->velocity.x + angleCos * this->velocity.y;
-    double spinFactor = velocityX - BALL_RADIUS * this->spin.z;
-    double absSpinFactor = (spinFactor > 0.0) ? spinFactor : -spinFactor;
-    double velocityFactor = absSpinFactor / 2.5;
-    double absVelocityY = (velocityY > 0.0) ? velocityY : -velocityY;
-    double spinDirection = (spinFactor > 0.0) ? 1.0 : -1.0; // DAT_04c8b9a0 1.0E
-    double minSpinFactor = 0.4 * absVelocityY;
-    if (velocityFactor < minSpinFactor) minSpinFactor = velocityFactor;
-    double spinChange = spinDirection * minSpinFactor;
-    double newVelocityX = velocityX - spinChange / 2.5; // DAT_04c8bc80 2.5E
-    double newVelocityY = -0.804 * velocityY; // -(velocityY * dword_35B7978) // DAT_04cb4410 0.804E
-    this->velocity.x = angleSin * newVelocityY + angleCos * newVelocityX;
-    this->velocity.y = angleCos * newVelocityY - newVelocityX * angleSin;
-    double newSpinX = angleSin * this->spin.x + angleCos * this->spin.y;
-    double newSpinY = angleCos * this->spin.x - angleSin * this->spin.y - velocityY * 0.1420875022201172; // dword_35B7988 / BALL_RADIUS   DAT_04cb4420 0.54E
-    double newSpinZ = this->spin.z + spinChange * 0.6578125102783204; // unk_35B7A28 / BALL_RADIUS
-    this->spin.x = angleSin * newSpinX + angleCos * newSpinY;
-    this->spin.y = angleCos * newSpinX - newSpinY * angleSin;
-    this->spin.z = newSpinZ;
-} */
-
 void Prediction::Ball::move(const double &time) {
     if (this->velocity) {
         this->predictedPosition.x += this->velocity.x * time;
@@ -569,32 +428,6 @@ bool Prediction::Ball::isMovingOrSpinning() const {
 
 #include "Prediction.update.h"
 
-/* bool Prediction::Ball::willCollideWithTable(const double *smallestTime) const {
-    double currentX = this->predictedPosition.x;
-    double currentY = this->predictedPosition.y;
-    double predictedX = currentX + this->velocity.x * *smallestTime;
-    double predictedY = currentY + this->velocity.y * *smallestTime;
-    double leftX;
-    double rightX;
-    double bottomY;
-    double topY;
-    if (this->velocity.x > 0.0) {
-        leftX = currentX;
-        rightX = predictedX;
-    } else {
-        leftX = predictedX;
-        rightX = currentX;
-    }
-    if (this->velocity.y > 0.0) {
-        topY = currentY;
-        bottomY = predictedY;
-    } else {
-        topY = predictedY;
-        bottomY = currentY;
-    }
-    return (leftX < TABLE_BOUND_LEFT || rightX > TABLE_BOUND_RIGHT || topY < TABLE_BOUND_TOP ||
-            bottomY > TABLE_BOUND_BOTTOM);
-} */
 
 void Prediction::Ball::determineBallTableCollision(void *pData, double *smallestTime) {
     double angle;
@@ -617,58 +450,3 @@ void Prediction::Ball::determineBallTableCollision(void *pData, double *smallest
         }
     }
 }
-
-/* bool Prediction::Ball::isBallLineCollision(double *pTime_1, const Point2D &tableShapePointA,
-                                           const Point2D &tableShapePointB) const {
-    if (!this->velocity) {
-        return false;
-    }
-    Point2D delta = tableShapePointB - tableShapePointA;
-    double v17 = delta.y * this->velocity.x - delta.x * this->velocity.y;
-    if (v17 == 0.0) {
-        return false;
-    }
-    double invDistance = 1.0 / sqrt(delta.square());
-    double v21 = invDistance * BALL_RADIUS;
-    double v22 = this->predictedPosition.x - tableShapePointA.x - delta.y * v21;
-    double v23 = this->predictedPosition.y - tableShapePointA.y + delta.x * v21;
-    double v24 = (v22 * -this->velocity.y - v23 * -this->velocity.x) / v17;
-    if (v24 <= 0.0 || v24 >= 1.0) {
-        return false;
-    }
-    double time = (delta.x * v23 - delta.y * v22) / v17;
-    if (time <= 0.0 || (time - 1E-11 > *pTime_1)) {
-        return false;
-    }
-    if (this->velocity.x * (delta.y * invDistance) + this->velocity.y * -(delta.x * invDistance) >
-        0.0) {
-        return false;
-    }
-    *pTime_1 = time;
-    return true;
-} */
-
-/* bool Prediction::Ball::isBallPointCollision(double *smallestTime, const Point2D &tableShapePoint) const {
-    Point2D delta = tableShapePoint - this->predictedPosition;
-    double v16 = -(this->velocity.x * delta.x * 2.0) - (this->velocity.y * delta.y * 2.0);
-    if (v16 >= 0.0) {
-        return false;
-    }
-    double velocitySquare = this->velocity.square();
-    double distanceSquare = delta.square();
-    double unkSquare = v16 * v16;
-    if (distanceSquare - unkSquare / (velocitySquare * 4.0) >= BALL_RADIUS_SQUARE) {
-        return false;
-    }
-    double v22 = (-v16 -
-                  sqrt(unkSquare - velocitySquare * 4.0 * (distanceSquare - BALL_RADIUS_SQUARE))) /
-                 (velocitySquare * 2.0);
-    if (v22 < 0.0) {
-        return false;
-    }
-    if (v22 - unk_35B7A20 > *smallestTime) {
-        return false;
-    }
-    *smallestTime = v22;
-    return true;
-} */
