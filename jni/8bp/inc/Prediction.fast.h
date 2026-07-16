@@ -7,17 +7,16 @@
 #include <Vector/Vectors.h>
 #include <vector>
 
-#include "8bp/Ball.h"
+#include "game/Ball.h"
 
 #include <imgui/inc/persistence.h>
 
-#include "8bp/GameManager.h"
+#include "game/GameManager.h"
 
 static Vec4d table_bounds;
 static bool fastCalc = true;
 
 struct Prediction {
-
     static bool pocketStatus[TABLE_POCKETS_COUNT];
 
     Prediction() = default;
@@ -97,6 +96,9 @@ struct Prediction {
     bool firstHitIsTarget = false;
     Candidate m_candidate = {-1};
 
+    // forceFullSimulation=true → fastCalc=false, skip cache → simulasi penuh.
+    // Di-set true oleh AutoPlay sebelum determineShotResult untuk scan/safety check,
+    // lalu di-set false setelahnya. Default false = behavior normal.
     bool forceFullSimulation = false;
 
     void calculateShotResultSize();
@@ -127,19 +129,22 @@ static bool prevIsAuto = false;   // ← adaugă asta
 /* PREDICTION PUBLIC METHODS ==================================================================== */
 
 bool Prediction::determineShotResult(bool isAuto, double shotAngle, double shotPower, Vec2d shotSpin, Candidate cand) { // returns isShouldReDraw
-        if (!forceFullSimulation) {
-        if (shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin && isAuto == prevIsAuto)
+    // FIX: skip cache saat forceFullSimulation, dan include cand.idx supaya
+    // dua kandidat dengan angle/power sama tapi target beda tidak tabrakan cache.
+    if (!forceFullSimulation) {
+        if (shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin
+            && isAuto == prevIsAuto && cand.idx == m_candidate.idx)
             return false;
-        }
-
+    }
     prevAngle = shotAngle;
     prevPower = shotPower;
     prevSpin  = shotSpin;
     prevIsAuto = isAuto;   // ← salvează și asta
 
     this->m_candidate = cand;
+    // FIX: forceFullSimulation override fastCalc → simulasi penuh, tidak partial
     fastCalc = forceFullSimulation ? false : isAuto;
-    
+
     this->initBalls();
     this->initCueBall(shotAngle, shotPower, shotSpin);
     this->guiData.collision.firstHitBall = nullptr;
@@ -232,6 +237,9 @@ void Prediction::determineBallsPositions() {
                 this->handleCollision();
                 if (this->guiData.collision.firstHitBall != nullptr && this->m_candidate.idx != -1) {
                     this->firstHitIsTarget = (this->guiData.collision.firstHitBall->index == this->m_candidate.idx);
+                    // FIX: jangan early return saat forceFullSimulation=true.
+                    // Early return bikin posisi bola tidak dilanjutkan ke pocket →
+                    // lines kelihatan masuk tapi bola tidak sampai → prediction meleset.
                     if (!this->firstHitIsTarget && !this->forceFullSimulation) return;
                 }
             }
