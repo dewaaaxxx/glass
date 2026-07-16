@@ -450,8 +450,8 @@ namespace AutoPlay {
     // MAIN: Execute shot with nomination
     // ========================================================================
     void Shoot(double angle, double power = 0.f) {
-        setAimAngle(angle);
-        setShotPower(power);
+    //    setAimAngle(angle);
+  //      setShotPower(power);
         gPrediction->determineShotResult(false, angle, power);
 
         bool nominating = false;
