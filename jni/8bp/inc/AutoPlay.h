@@ -304,6 +304,7 @@ struct PhysicsEngine {
 // GAME STATE & HELPER FUNCTIONS
 // ============================================================================
 Point2D lastFailedCuePos = { -1000.0, -1000.0 };
+Point2D lastSetCuePos = {-1000, -1000};
 
 BallType getPlayerBallType(Ball::Classification classification) {
     if (classification == Ball::Classification::STRIPE) return STRIPES;
