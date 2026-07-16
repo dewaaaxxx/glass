@@ -275,4 +275,28 @@ void Prediction::Ball::calcVelocityPostCollision(const double &angle) {
 
     ball.velocity() = bak_velocity;
     ball.spin() = bak_spin;
+
+
+    /* double angleCos = round(cos(angle) * 10000.0) / 10000.0;
+    double angleSin = round(sin(angle) * 10000.0) / 10000.0;
+    double velocityX = angleCos * this->velocity.x - angleSin * this->velocity.y;
+    double velocityY = angleSin * this->velocity.x + angleCos * this->velocity.y;
+    double spinFactor = velocityX - BALL_RADIUS * this->spin.z;
+    double absSpinFactor = (spinFactor > 0.0) ? spinFactor : -spinFactor;
+    double velocityFactor = absSpinFactor / 2.5;
+    double absVelocityY = (velocityY > 0.0) ? velocityY : -velocityY;
+    double spinDirection = (spinFactor > 0.0) ? 1.0 : -1.0; // DAT_04c8b9a0 1.0E
+    double minSpinFactor = 0.4 * absVelocityY;
+    if (velocityFactor < minSpinFactor) minSpinFactor = velocityFactor;
+    double spinChange = spinDirection * minSpinFactor;
+    double newVelocityX = velocityX - spinChange / 2.5; // DAT_04c8bc80 2.5E
+    double newVelocityY = -0.804 * velocityY; // -(velocityY * dword_35B7978) // DAT_04cb4410 0.804E
+    this->velocity.x = angleSin * newVelocityY + angleCos * newVelocityX;
+    this->velocity.y = angleCos * newVelocityY - newVelocityX * angleSin;
+    double newSpinX = angleSin * this->spin.x + angleCos * this->spin.y;
+    double newSpinY = angleCos * this->spin.x - angleSin * this->spin.y - velocityY * 0.1420875022201172; // dword_35B7988 / BALL_RADIUS   DAT_04cb4420 0.54E
+    double newSpinZ = this->spin.z + spinChange * 0.6578125102783204; // unk_35B7A28 / BALL_RADIUS
+    this->spin.x = angleSin * newSpinX + angleCos * newSpinY;
+    this->spin.y = angleCos * newSpinX - newSpinY * angleSin;
+    this->spin.z = newSpinZ; */
 }
