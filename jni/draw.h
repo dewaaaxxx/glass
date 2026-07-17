@@ -461,7 +461,7 @@ static void DrawContentArea(float sidebarW, float winW, float winH) {
             DrawSectionHdr0("Settings");
 
             {
-                if (persistent_int[O("iLineThickness")] < 1) persistent_int[O("iLineThickness")] = 4;
+                if (persistent_int[O("fLineThick")] < 1) persistent_int[O("fLineThick")] = 4;
                 PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
                 PushStyleVar(ImGuiStyleVar_GrabRounding, 10.0f);
                 PushStyleColor(ImGuiCol_FrameBg,          ImVec4(0.12f, 0.12f, 0.18f, 1.0f));
@@ -474,7 +474,7 @@ static void DrawContentArea(float sidebarW, float winW, float winH) {
                 TextColored(ImVec4(0.55f, 0.65f, 0.80f, 1.0f), "%s", lbl1);
                 SameLine(avail - lsz1.x + 4.0f);
                 SetNextItemWidth(avail * 0.52f);
-                need_save |= SliderInt(O("##lineThick"), &persistent_int[O("iLineThickness")], 1, 10, "%d");
+                need_save |= SliderInt(O("##lineThick"), &persistent_int[O("fLineThick")], 1, 10, "%d");
                 /*Dummy(ImVec2(0, 6));
                 int& menuSz = persistent_int[O("iMenuSizeOffset")];
                 const char* lbl2 = "Fix Menu Size";
