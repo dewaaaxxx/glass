@@ -20,7 +20,7 @@ double normalizeAngle(double angle) {
     return newAngle;
 }
 
-
+Candidate g_CurrentCandidate = { -1 };
 
 extern void DrawEightBallLoading(ImDrawList*);
 
