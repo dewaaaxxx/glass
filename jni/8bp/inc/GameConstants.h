@@ -57,8 +57,8 @@ struct Candidate {
     double score;
     int pocketIndex;
     double power;
-    int tot;  // total bola yang masuk
-    int own;  // total bola milik sendiri yang masuk
+    int tot = 0;  // total bola yang masuk
+    int own = 0;  // total bola milik sendiri yang masuk
     bool operator<(const Candidate& other) const {
         return score < other.score;
     }
