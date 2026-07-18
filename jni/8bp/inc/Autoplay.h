@@ -20,16 +20,7 @@ double normalizeAngle(double angle) {
     return newAngle;
 }
 
-// ==================== STRUKTUR CANDIDATE DENGAN TOT & OWN ====================
-struct Candidate {
-    int idx;
-    double angle;
-    double score;
-    int pocketIndex;
-    double power;
-    int tot;  // total bola yang masuk (untuk cleanTableMode)
-    int own;  // total bola milik sendiri yang masuk (untuk cleanTableMode)
-};
+
 
 extern void DrawEightBallLoading(ImDrawList*);
 
