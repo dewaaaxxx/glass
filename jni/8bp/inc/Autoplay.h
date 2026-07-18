@@ -20,7 +20,16 @@ double normalizeAngle(double angle) {
     return newAngle;
 }
 
-Candidate g_CurrentCandidate = { -1 };
+// ==================== STRUKTUR CANDIDATE DENGAN TOT & OWN ====================
+struct Candidate {
+    int idx;
+    double angle;
+    double score;
+    int pocketIndex;
+    double power;
+    int tot;  // total bola yang masuk (untuk cleanTableMode)
+    int own;  // total bola milik sendiri yang masuk (untuk cleanTableMode)
+};
 
 extern void DrawEightBallLoading(ImDrawList*);
 
@@ -68,13 +77,22 @@ namespace AutoPlay {
     bool didSetAngle = false;
     bool bAutoPlaying = false;
 
+    // ==================== ENUM DAN VARIABEL CLEAN TABLE ====================
     enum State {
         IDLE,           // Waiting for player turn or Autoplay to be enabled
         SCANNING,       // Searching for the best shot candidate (calculating physics)
         NOMINATING,     // Waiting for pocket nomination click to finish
         EXECUTING,      // Setting the angle and spin (waiting for visual cue to update)
     } state = IDLE;
-    
+
+    enum CleanTableMode { 
+        CLEAN_OFF = 0, 
+        CLEAN_ALL_BALLS, 
+        CLEAN_YOUR_BALLS 
+    };
+    static inline CleanTableMode cleanTableMode = CLEAN_OFF;
+    // ========================================================================
+
     double pendingShotPower = 0.f;
     double pendingShotAngle = 0.f;
     int nominationFrameCounter = 0;
@@ -205,6 +223,8 @@ namespace AutoPlay {
                     g_CurrentCandidate.angle = angle;
                     g_CurrentCandidate.power = power;
                     g_CurrentCandidate.pocketIndex = gPrediction->guiData.balls[targetIdx].pocketIndex;
+                    g_CurrentCandidate.tot = 0;
+                    g_CurrentCandidate.own = 0;
 
                     foundShot = true;
                     Shoot(angle, power);
@@ -252,6 +272,8 @@ namespace AutoPlay {
                     g_CurrentCandidate.angle = angle;
                     g_CurrentCandidate.power = power;
                     g_CurrentCandidate.pocketIndex = gPrediction->guiData.balls[targetIdx].pocketIndex;
+                    g_CurrentCandidate.tot = 0;
+                    g_CurrentCandidate.own = 0;
                 }
 
                 if (isPotentiallyValid) {
@@ -348,15 +370,18 @@ namespace AutoPlay {
                 if (power > 666.0) power = 666.0;
                 // if (power < 150.0) power = 150.0; // Removed arbitrary floor, let physics decide
                 
-                candidates.push_back({i, angle, score, pocketIdx, power});
+                candidates.push_back({i, angle, score, pocketIdx, power, 0, 0});
             }
         }
         
         std::sort(candidates.begin(), candidates.end());
         
-        // TODO: more scans around the candidate angle while target ball is hit
-        // more power scan
+        // ==================== LOGIKA CLEAN TABLE MODE ====================
         bool foundShot = false;
+        Candidate bestCandidate = {-1, 0.0, 0.0, -1, 0.0, 0, 0};
+        int bestTot = -1;
+        int bestOwn = -1;
+
         for (const auto& cand : candidates) {
             double angle = NumberUtils::normalizeDoublePrecision(normalizeAngle(cand.angle));
             gPrediction->determineShotResult(true, angle, cand.power, sharedGameManager.getShotSpin(), cand);
@@ -399,7 +424,9 @@ namespace AutoPlay {
             if (gPrediction->guiData.balls[cand.idx].onTable) continue; // target ball was not potted
             if (gPrediction->guiData.balls[cand.idx].pocketIndex != cand.pocketIndex) continue; // target ball did not go into target pocket
 
-            std::vector<int> currentPottedBalls;
+            // ==================== HITUNG TOT & OWN ====================
+            int totalPotted = 0;
+            int ownPotted = 0;
             bool isAngleGood = false;
             for (int i = 1; i < gPrediction->guiData.ballsCount; i++) {
                 Prediction::Ball& ball = gPrediction->guiData.balls[i];
@@ -408,8 +435,11 @@ namespace AutoPlay {
                     : (ball.classification == myclass);
 
                 if (match && ball.originalOnTable && !ball.onTable) {
-                    currentPottedBalls.push_back(i);
+                    totalPotted++;
+                    ownPotted++;
                     isAngleGood = true;
+                } else if (ball.originalOnTable && !ball.onTable) {
+                    totalPotted++; // bola lain ikut masuk
                 }
             }
 
@@ -425,13 +455,50 @@ namespace AutoPlay {
             auto& eightBallRef = gPrediction->guiData.balls[8];
             bool isEightBallPotted = eightBallRef.originalOnTable && !eightBallRef.onTable;
             if (isAngleGood && isEightBallPotted && myclass != Ball::Classification::EIGHT_BALL) isAngleGood = false;
+
             if (isAngleGood) {
-                LOGI("AutoPlay: Found good angle %f with power %f", angle, cand.power);
-                g_CurrentCandidate = cand;
-                foundShot = true;
-                Shoot(angle, cand.power);
-                break;
+                // ==================== TERAPKAN CLEAN TABLE MODE ====================
+                bool shouldTakeShot = false;
+                switch (cleanTableMode) {
+                    case CLEAN_OFF:
+                        shouldTakeShot = true; // ambil tembakan pertama yang valid
+                        break;
+                    case CLEAN_ALL_BALLS:
+                        if (totalPotted > bestTot) {
+                            bestTot = totalPotted;
+                            bestCandidate = cand;
+                            bestCandidate.tot = totalPotted;
+                            bestCandidate.own = ownPotted;
+                        }
+                        break;
+                    case CLEAN_YOUR_BALLS:
+                        if (ownPotted > bestOwn) {
+                            bestOwn = ownPotted;
+                            bestCandidate = cand;
+                            bestCandidate.tot = totalPotted;
+                            bestCandidate.own = ownPotted;
+                        }
+                        break;
+                }
+
+                if (shouldTakeShot) {
+                    LOGI("AutoPlay: Found good angle %f with power %f", angle, cand.power);
+                    g_CurrentCandidate = cand;
+                    g_CurrentCandidate.tot = totalPotted;
+                    g_CurrentCandidate.own = ownPotted;
+                    foundShot = true;
+                    Shoot(angle, cand.power);
+                    break;
+                }
             }
+        }
+
+        // ==================== JIKA CLEAN TABLE MODE, PILIH YANG TERBAIK ====================
+        if (!foundShot && (cleanTableMode == CLEAN_ALL_BALLS || cleanTableMode == CLEAN_YOUR_BALLS) && bestCandidate.idx != -1) {
+            LOGI("AutoPlay: Clean Table Mode -> Found best with tot=%d, own=%d", bestCandidate.tot, bestCandidate.own);
+            g_CurrentCandidate = bestCandidate;
+            foundShot = true;
+            Shoot(bestCandidate.angle, bestCandidate.power);
         }
 
         if (!foundShot) {
@@ -464,7 +531,6 @@ namespace AutoPlay {
                 ImVec2 end(pos.x + size.x, pos.y + size.y);
                 ImVec2 center(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f);
                 
-                // Since we are in a window with the bg set, we can just use standard button with colors
                 PushStyleColor(ImGuiCol_Button, IM_COL32(50, 50, 50, 180));
                 PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(80, 80, 80, 200));
                 PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(100, 100, 100, 200));
@@ -497,6 +563,13 @@ namespace AutoPlay {
                 if (bAutoPlaying) ClearState();
                 // if (!bAutoPlaying && powerSlider.Active) powerSlider.Cancel();
             }
+
+            // ==================== TAMBAHAN UI UNTUK CLEAN TABLE MODE ====================
+            SameLine();
+            if (ImGui::Combo("Clean", (int*)&cleanTableMode, "OFF\0ALL\0OWN\0")) {
+                // Tidak perlu logika tambahan
+            }
+            // ========================================================================
         } End();
 
         PopStyleVar();
