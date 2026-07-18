@@ -16,6 +16,6 @@
 #include "8bp/inc/NumberUtils.h"
 #include "8bp/inc/Prediction.fastt.h"
 #include "PowerSlider.h"
-#include "8bp/inc/AutoPlay.h"
+#include "8bp/inc/Autoplay.h"
 #include "8bp/inc/AutoQueue.h"
 #include "8bp/inc/ScreenTable.h"
