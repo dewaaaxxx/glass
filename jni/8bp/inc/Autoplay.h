@@ -375,11 +375,12 @@ namespace AutoPlay {
 
         for (const auto& cand : candidates) {
             double angle = NumberUtils::normalizeDoublePrecision(normalizeAngle(cand.angle));
-            // isAuto=true → fastCalc=true → early return saat first hit → bola ke-2,3 tidak disimulasikan
-            // → totalPotted selalu 1 → clean table tidak bisa deteksi multi-ball.
-            // Untuk CLEAN mode: pakai isAuto=false supaya semua bola disimulasikan penuh.
+            // Clean table mode butuh simulasi penuh supaya semua bola yang masuk
+            // bisa terhitung (fastCalc=true early-return → totalPotted selalu 1)
             bool isCleanMode = (cleanTableMode == CLEAN_ALL_BALLS || cleanTableMode == CLEAN_YOUR_BALLS);
-            gPrediction->determineShotResult(!isCleanMode, angle, cand.power, sharedGameManager.getShotSpin(), cand);
+            gPrediction->forceFullSimulation = isCleanMode;
+            gPrediction->determineShotResult(true, angle, cand.power, sharedGameManager.getShotSpin(), cand);
+            gPrediction->forceFullSimulation = false;
             if (!gPrediction->firstHitIsTarget) continue;
 
             if (!gPrediction->guiData.balls[0].onTable) continue; // cue ball should not be pocketed
