@@ -23,11 +23,8 @@ using namespace std;
 struct MenuState {
     bool isOpen = false;
     int currentTab = 0;
-    float sidebarWidth = 300.0f;
     float animProgress = 0.0f;
     float menuAlpha = 0.0f;
-    float menuScale = 0.9f;
-    ImVec4 accentColor = ImVec4(0.35f, 0.65f, 0.95f, 1.0f);
 };
 static MenuState g_menu;
 
@@ -49,7 +46,7 @@ static void DrawGradientRect(ImDrawList* dl, ImVec2 p1, ImVec2 p2, ImU32 col1, I
     }
 }
 
-static bool SidebarButton(const char* label, const char* icon, bool selected, float width) {
+static bool BigToggle(const char* label, bool* v) {
     ImGuiWindow* window = GetCurrentWindow();
     if (window->SkipItems) return false;
 
@@ -57,58 +54,13 @@ static bool SidebarButton(const char* label, const char* icon, bool selected, fl
     const ImGuiStyle& style = g.Style;
     const ImGuiID id = window->GetID(label);
 
-    ImVec2 pos = window->DC.CursorPos;
-    ImVec2 size = ImVec2(width - 20.0f, 58.0f);
-
-    const ImRect bb(pos, pos + size);
-    ItemSize(size, style.FramePadding.y);
-    if (!ItemAdd(bb, id)) return false;
-
-    bool hovered, held;
-    bool pressed = ButtonBehavior(bb, id, &hovered, &held);
-
-    static std::map<ImGuiID, float> hoverAnim;
-    float& animT = hoverAnim[id];
-    float targetT = (selected || hovered) ? 1.0f : 0.0f;
-    animT += (targetT - animT) * g.IO.DeltaTime * 12.0f;
-
-    ImDrawList* dl = window->DrawList;
+    // --- UKURAN DIKECILKAN ---
+    float toggleW = 140.0f; // Dulu 180 -> jadi 140
+    float toggleH = 50.0f;  // Dulu 80 -> jadi 50
+    float rowH = 70.0f;     // Dulu 120 -> jadi 70
     
-    if (selected) {
-        ImU32 gradCol1 = IM_COL32(40, 100, 180, 255);
-        ImU32 gradCol2 = IM_COL32(60, 130, 200, 255);
-        dl->AddRectFilled(bb.Min, bb.Max, gradCol1, 10.0f);
-        dl->AddRectFilled(ImVec2(bb.Min.x, bb.Min.y + 2), ImVec2(bb.Min.x + 6, bb.Max.y - 2), IM_COL32(100, 200, 255, 255), 3.0f);
-    } else if (animT > 0.01f) {
-        ImU32 hoverCol = IM_COL32(50, 50, 60, (int)(180 * animT));
-        dl->AddRectFilled(bb.Min, bb.Max, hoverCol, 12.0f);
-    }
-
-    float iconOffset = 8.0f * animT;
-    ImVec2 iconPos = ImVec2(bb.Min.x + 22.0f + iconOffset, bb.Min.y + (size.y - g.FontSize) * 0.5f);
-    dl->AddText(iconPos, selected ? IM_COL32(255, 255, 255, 255) : IM_COL32(140, 140, 160, (int)(180 + 75 * animT)), icon);
-    
-    ImVec2 textPos = ImVec2(bb.Min.x + 58.0f + iconOffset, bb.Min.y + (size.y - g.FontSize) * 0.5f);
-    dl->AddText(textPos, selected ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 215, (int)(200 + 55 * animT)), label);
-
-    return pressed;
-}
-
-static bool ToggleSwitch(const char* label, bool* v) {
-    ImGuiWindow* window = GetCurrentWindow();
-    if (window->SkipItems) return false;
-
-    ImGuiContext& g = *GImGui;
-    const ImGuiStyle& style = g.Style;
-    const ImGuiID id = window->GetID(label);
-
-    float height = 32.0f;
-    float width = 56.0f;
-    float radius = height * 0.5f;
-
-    ImVec2 textSize = CalcTextSize(label);
     ImVec2 pos = window->DC.CursorPos;
-    ImVec2 size = ImVec2(GetContentRegionAvail().x, ImMax(height, textSize.y) + style.FramePadding.y * 2 + 10.0f);
+    ImVec2 size = ImVec2(GetContentRegionAvail().x, rowH);
 
     const ImRect bb(pos, pos + size);
     ItemSize(size, style.FramePadding.y);
@@ -118,33 +70,36 @@ static bool ToggleSwitch(const char* label, bool* v) {
     bool pressed = ButtonBehavior(bb, id, &hovered, &held);
     if (pressed) *v = !*v;
 
-    static std::map<ImGuiID, float> switchAnim;
-    float& animT = switchAnim[id];
+    static std::map<ImGuiID, float> toggleAnim;
+    float& animT = toggleAnim[id];
     float targetT = *v ? 1.0f : 0.0f;
-    animT += (targetT - animT) * g.IO.DeltaTime * 14.0f;
+    animT += (targetT - animT) * g.IO.DeltaTime * 12.0f;
 
     ImDrawList* dl = window->DrawList;
     
-    if (hovered) {
-        dl->AddRectFilled(bb.Min, bb.Max, IM_COL32(45, 45, 55, 100), 10.0f);
-    }
+    float toggleX = bb.Min.x + 20.0f;
+    float toggleY = bb.Min.y + (rowH - toggleH) * 0.5f;
+    ImVec2 toggleMin = ImVec2(toggleX, toggleY);
+    ImVec2 toggleMax = ImVec2(toggleX + toggleW, toggleY + toggleH);
+    float radius = toggleH * 0.5f;
     
-    ImVec2 togglePos = ImVec2(bb.Max.x - width - 15.0f, bb.Min.y + (size.y - height) * 0.5f);
-    ImVec2 toggleEnd = ImVec2(togglePos.x + width, togglePos.y + height);
+    ImU32 bgColor = *v ? IM_COL32(100, 180, 255, 255) : IM_COL32(80, 80, 80, 255);
+    dl->AddRectFilled(toggleMin, toggleMax, bgColor, radius);
+    dl->AddRect(toggleMin, toggleMax, IM_COL32(255, 255, 255, 150), radius, 0, 2.0f); // Border tipis
     
-    ImVec4 offColor = ImVec4(0.27f, 0.27f, 0.31f, 1.0f);
-    ImVec4 onColor = ImVec4(0.20f, 0.55f, 0.86f, 1.0f);
-    ImVec4 bgColorV = ImLerp(offColor, onColor, animT);
-    dl->AddRectFilled(togglePos, toggleEnd, ImColor(bgColorV), radius);
+    float knobRadius = radius - 5.0f; // Knob lebih kecil sedikit
+    float knobX = toggleX + radius + (toggleW - toggleH) * animT;
+    float knobY = toggleY + radius;
+    dl->AddCircleFilled(ImVec2(knobX, knobY), knobRadius, IM_COL32(255, 255, 255, 255));
     
-    float knobX = togglePos.x + radius + (width - height) * animT;
-    float knobY = togglePos.y + radius;
-    float knobR = radius - 4.0f;
-    
-    dl->AddCircleFilled(ImVec2(knobX, knobY), knobR + 2.0f, IM_COL32(0, 0, 0, 40));
-    dl->AddCircleFilled(ImVec2(knobX, knobY), knobR, IM_COL32(255, 255, 255, 255));
-
-    dl->AddText(ImVec2(bb.Min.x + 15.0f, bb.Min.y + (size.y - textSize.y) * 0.5f), IM_COL32(230, 230, 240, 255), label);
+    // --- TEKS DI SEBELAH KANAN TOGGLE ---
+    SetWindowFontScale(0.95f); // Font sedikit lebih kecil
+    ImVec2 textSize = CalcTextSize(label);
+    float availWidth = GetContentRegionAvail().x;
+    float textX = bb.Min.x + availWidth - textSize.x - 40.0f;  // Geser sedikit ke kiri
+    float textY = bb.Min.y + (rowH - textSize.y) * 0.5f;
+    dl->AddText(ImVec2(textX, textY), IM_COL32(255, 255, 255, 255), label);
+    SetWindowFontScale(1.0f);
 
     return pressed;
 }
@@ -290,85 +245,27 @@ INLINE void DrawESP(ImDrawList* draw) {
         }
 
         if (persistent_bool[O("bESP_DrawPredictionLine")]) {
-            float predA = persistent_float["fPredAlpha"];
-            if (predA < 0.01f) predA = 1.0f;
-            auto getCol = [&](int idx) -> ImU32 {
-                ImVec4 v = colors[idx].Value;
-                v.w = predA;
-                return ColorConvertFloat4ToU32(v);
-            };
-
-            // Helper: draw a dotted/dashed line between two points
-            auto AddDottedLine = [&](ImVec2 a, ImVec2 b, ImU32 col, float thickness, float dotLen = 8.f, float gapLen = 8.f) {
-                float dx = b.x - a.x;
-                float dy = b.y - a.y;
-                float dist = sqrtf(dx * dx + dy * dy);
-                if (dist < 0.1f) return;
-                float nx = dx / dist, ny = dy / dist;
-                float t = 0.f;
-                bool drawing = true;
-                while (t < dist) {
-                    float segLen = drawing ? dotLen : gapLen;
-                    float end = t + segLen;
-                    if (end > dist) end = dist;
-                    if (drawing) {
-                        draw->AddLine(
-                            ImVec2(a.x + nx * t,   a.y + ny * t),
-                            ImVec2(a.x + nx * end, a.y + ny * end),
-                            col, thickness
-                        );
-                    }
-                    t = end;
-                    drawing = !drawing;
-                }
-            };
-
-            float lineThick = persistent_float["fLineThick"];
-
             for (int i = 0; i < gPrediction->guiData.ballsCount; i++) {
                 auto& ball = gPrediction->guiData.balls[i];
+
                 if (ball.initialPosition != ball.predictedPosition) {
                     ImVec2 lastPos{};
-                    ImU32 col = getCol(i);
-                    // Stripe balls (index 9-15) use dotted line, solid/cue/8ball use solid line
-                    bool isDotted = (i >= 9 && i <= 15);
-                    for (int j = 1; j < (int)ball.positions.size(); j++) {
+                    for (int j = 1; j < ball.positions.size(); j++) {
                         auto point = WorldToScreen(ball.positions[j]);
-                        if (lastPos.x || lastPos.y) {
-                            if (isDotted)
-                                AddDottedLine(lastPos, point, col, lineThick);
-                            else
-                                draw->AddLine(lastPos, point, col, lineThick);
-                        }
+                        if (lastPos.x || lastPos.y) draw->AddLine(lastPos, point, colors[i], 10.f);
                         lastPos = point;
                     }
                 }
             }
+        }
+
+        if (persistent_bool[O("bESP_DrawPredictionLine")]) {
             for (int i = 0; i < gPrediction->guiData.ballsCount; i++) {
                 auto& ball = gPrediction->guiData.balls[i];
+
                 if (ball.initialPosition != ball.predictedPosition) {
-                    ImU32 col = getCol(i);
-                    bool isStripe = (i >= 9 && i <= 15);
-                    float circleR = 20.f;
-
-                    // Start circle (hollow)
-                    draw->AddCircle(WorldToScreen(ball.initialPosition), circleR, col, 0, 6.f);
-
-                    // End circle (filled)
-                    ImVec2 endPos = WorldToScreen(ball.predictedPosition);
-                    draw->AddCircleFilled(endPos, circleR, col);
-
-                    // Stripe balls: draw minus sign ( — ) inside end circle
-                    if (isStripe) {
-                        float minusHalfW = circleR * 0.55f;
-                        float minusThick = circleR * 0.28f;
-                        draw->AddLine(
-                            ImVec2(endPos.x - minusHalfW, endPos.y),
-                            ImVec2(endPos.x + minusHalfW, endPos.y),
-                            IM_COL32(255, 255, 255, 220),
-                            minusThick
-                        );
-                    }
+                    draw->AddCircle(WorldToScreen(ball.initialPosition), 20, colors[i], 0, 6.f);
+                    draw->AddCircleFilled(WorldToScreen(ball.predictedPosition), 20, colors[i]);
                 }
             }
         }
@@ -376,252 +273,6 @@ INLINE void DrawESP(ImDrawList* draw) {
 }
 
 #include "ButtonClicker.h"
-
-static void DrawSidebar(float sidebarW, float winH) {
-    ImDrawList* dl = GetWindowDrawList();
-    ImVec2 winPos = GetWindowPos();
-    
-    DrawGradientRect(dl, winPos, ImVec2(winPos.x + sidebarW, winPos.y + winH), IM_COL32(22, 22, 28, 255), IM_COL32(28, 28, 35, 255), false);
-    dl->AddLine(ImVec2(winPos.x + sidebarW, winPos.y), ImVec2(winPos.x + sidebarW, winPos.y + winH), IM_COL32(55, 55, 65, 255), 1.0f);
-    
-    SetCursorPos(ImVec2(0, 25));
-    
-    BeginGroup();
-    
-    Dummy(ImVec2(sidebarW, 5));
-    SetCursorPosX(25);
-    
-    PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.75f, 1.0f, 1.0f));
-    SetWindowFontScale(1.2f);
-    Text(O("CM"));
-    SetWindowFontScale(1.0f);
-    PopStyleColor();
-    
-    SetCursorPosX(25);
-    TextColored(ImVec4(0.55f, 0.55f, 0.6f, 1.0f), O("Engine v1.0"));
-    
-    Dummy(ImVec2(sidebarW, 35));
-    
-    SetCursorPosX(15);
-    if (SidebarButton(O("ESP"), O(">"), g_menu.currentTab == 0, sidebarW)) g_menu.currentTab = 0;
-    
-    Dummy(ImVec2(0, 5));
-    SetCursorPosX(15);
-    if (SidebarButton(O("Auto Play"), O(">"), g_menu.currentTab == 1, sidebarW)) g_menu.currentTab = 1;
-    
-    Dummy(ImVec2(0, 5));
-    SetCursorPosX(15);
-    if (SidebarButton(O("Auto Queue"), O(">"), g_menu.currentTab == 2, sidebarW)) g_menu.currentTab = 2;
-    
-    EndGroup();
-}
-
-static void DrawContentArea(float sidebarW, float winW, float winH) {
-    bool need_save = false;
-    
-    ImDrawList* dl = GetWindowDrawList();
-    ImVec2 winPos = GetWindowPos();
-    
-    DrawGradientRect(dl, ImVec2(winPos.x + sidebarW, winPos.y), ImVec2(winPos.x + winW, winPos.y + 65), IM_COL32(30, 30, 38, 255), IM_COL32(35, 35, 42, 255), false);
-    dl->AddLine(ImVec2(winPos.x + sidebarW, winPos.y + 65), ImVec2(winPos.x + winW, winPos.y + 65), IM_COL32(50, 50, 60, 255), 1.0f);
-    
-    const char* tabTitles[] = { "ESP Settings", "Auto Play", "Auto Queue" };
-    
-    SetCursorPos(ImVec2(sidebarW + 25, 22));
-    SetWindowFontScale(1.15f);
-    TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "%s", tabTitles[g_menu.currentTab]);
-    SetWindowFontScale(1.0f);
-    
-    SetCursorPos(ImVec2(sidebarW + 15, 80));
-    
-    PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-    PushStyleVar(ImGuiStyleVar_ScrollbarSize, 0.0f);
-    BeginChild(O("##ContentArea"), ImVec2(winW - sidebarW - 30, winH - 95), false, ImGuiWindowFlags_NoScrollbar);
-    
-    switch (g_menu.currentTab) {
-        case 0: {
-            
-            auto DrawSectionHdr0 = [&](const char* title) {
-                Dummy(ImVec2(0, 4));
-                TextColored(ImVec4(0.52f, 0.68f, 0.88f, 0.90f), "%s", title);
-                Dummy(ImVec2(0, 3));
-                ImVec2 lp = GetCursorScreenPos();
-                GetWindowDrawList()->AddLine(lp,
-                    ImVec2(lp.x + GetContentRegionAvail().x, lp.y),
-                    IM_COL32(45, 75, 120, 100), 1.0f);
-                Dummy(ImVec2(0, 7));
-            };
-        
-            Dummy(ImVec2(0, 10));
-            need_save |= ToggleSwitch(O("Draw Prediction Lines"), &persistent_bool[O("bESP_DrawPredictionLine")]);
-            need_save |= ToggleSwitch(O("Draw Pockets"), &persistent_bool[O("bESP_DrawPockets")]);
-            need_save |= ToggleSwitch(O("Draw Shot State"), &persistent_bool[O("bESP_DrawPocketsShotState")]);
-            
-            
-            DrawSectionHdr0("Settings");
-
-            {
-                if (persistent_int[O("fLineThick")] < 1) persistent_int[O("fLineThick")] = 4;
-                PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
-                PushStyleVar(ImGuiStyleVar_GrabRounding, 10.0f);
-                PushStyleColor(ImGuiCol_FrameBg,          ImVec4(0.12f, 0.12f, 0.18f, 1.0f));
-                PushStyleColor(ImGuiCol_SliderGrab,       ImVec4(0.12f, 0.45f, 0.95f, 1.0f));
-                PushStyleColor(ImGuiCol_SliderGrabActive, ImVec4(0.20f, 0.55f, 1.00f, 1.0f));
-                float avail = GetContentRegionAvail().x;
-                // Label right-aligned
-                const char* lbl1 = "Line Thickness";
-                ImVec2 lsz1 = CalcTextSize(lbl1);
-                TextColored(ImVec4(0.55f, 0.65f, 0.80f, 1.0f), "%s", lbl1);
-                SameLine(avail - lsz1.x + 4.0f);
-                SetNextItemWidth(avail * 0.52f);
-                need_save |= SliderInt(O("##lineThick"), &persistent_int[O("fLineThick")], 1, 10, "%d");
-                /*Dummy(ImVec2(0, 6));
-                int& menuSz = persistent_int[O("iMenuSizeOffset")];
-                const char* lbl2 = "Fix Menu Size";
-                TextColored(ImVec4(0.55f, 0.65f, 0.80f, 1.0f), "%s", lbl2);
-                ImVec2 lsz2 = CalcTextSize(lbl2);
-                SameLine(avail - lsz2.x + 4.0f);
-                SetNextItemWidth(avail * 0.52f);
-                bool changed = SliderInt(O("##menuSize"), &menuSz, -10, 10,
-                    menuSz == 0 ? O("Normal") : "%d");
-                need_save |= changed;*/
-                PopStyleColor(3);
-                PopStyleVar(2);
-            }
-            break;
-        }
-        
-        case 1: {
-            Dummy(ImVec2(0, 10));
-            need_save |= ToggleSwitch(O("Enable Auto Play"), &persistent_bool[O("bAutoPlay")]);
-            Dummy(ImVec2(0, 10));
-
-            // ==================== CLEAN TABLE MODE ====================
-            if (persistent_bool[O("bAutoPlay")]) {
-                Dummy(ImVec2(0, 4));
-                TextColored(ImVec4(0.75f, 0.75f, 0.8f, 1.0f), "Clean Table Mode");
-                Dummy(ImVec2(0, 4));
-                PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
-                PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(15, 12));
-                PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.12f, 0.12f, 0.15f, 1.0f));
-                PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.16f, 0.16f, 0.20f, 1.0f));
-                SetNextItemWidth(GetContentRegionAvail().x);
-                need_save |= Combo("##cleanMode", (int*)&AutoPlay::cleanTableMode, "OFF\0ALL BALLS\0YOUR BALLS\0");
-                PopStyleColor(2);
-                PopStyleVar(2);
-                Dummy(ImVec2(0, 8));
-            }
-            // ======================================================
-
-            need_save |= ToggleSwitch(O("Preview Power Slider"), &persistent_bool[O("bPSliderPreview")]);
-        
-            // ── Power Slider Position ──
-            Dummy(ImVec2(0, 10));
-            TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), "Power Slider Position");
-            Dummy(ImVec2(0, 4));
-
-            float x = persistent_float[O("fPowerBarXPercent")];
-            if (SliderFloat("X Position", &x, 0.00f, 0.50f, "%.3f")) {
-                persistent_float[O("fPowerBarXPercent")] = x;
-                need_save = true;
-            }
-            Dummy(ImVec2(0, 4));
-
-            float top = persistent_float[O("fPowerBarYStartPercent")];
-            if (SliderFloat("Top Position", &top, 0.05f, 0.50f, "%.3f")) {
-                persistent_float[O("fPowerBarYStartPercent")] = top;
-                need_save = true;
-            }
-            Dummy(ImVec2(0, 4));
-
-            float h = persistent_float[O("fPowerBarYEndPercent")];
-            if (SliderFloat("Height", &h, 0.30f, 0.90f, "%.3f")) {
-                persistent_float[O("fPowerBarYEndPercent")] = h;
-                need_save = true;
-            }
-            Dummy(ImVec2(0, 10));
-
-            // ==================== POWER SLIDER PREVIEW ====================
-            if (persistent_bool["bPSliderPreview"]) {
-                ImDrawList* fgdl = GetForegroundDrawList();
-                if (fgdl) {
-                    ImGuiIO& io = GetIO();
-                    float px = io.DisplaySize.x * persistent_float[O("fPowerBarXPercent")];
-                    float pt = io.DisplaySize.y * persistent_float[O("fPowerBarYStartPercent")];
-                    float ph = io.DisplaySize.y * (persistent_float[O("fPowerBarYEndPercent")] - persistent_float[O("fPowerBarYStartPercent")]);
-
-                    // Garis slider
-                    fgdl->AddLine(ImVec2(px, pt), ImVec2(px, pt + ph), IM_COL32(255, 80, 80, 220), 3.5f);
-                    
-                    // Titik atas & bawah
-                    fgdl->AddCircleFilled(ImVec2(px, pt), 7.f, IM_COL32(80, 255, 80, 240));
-                    fgdl->AddCircleFilled(ImVec2(px, pt + ph), 7.f, IM_COL32(80, 255, 80, 240));
-
-                    // Label nilai
-                    char buf[64];
-                    snprintf(buf, sizeof(buf), "X: %.2f%%", persistent_float[O("fPowerBarXPercent")] * 100.f);
-                    fgdl->AddText(ImVec2(px + 12, pt - 10), IM_COL32(255, 255, 255, 255), buf);
-
-                    snprintf(buf, sizeof(buf), "Top: %.2f%%", persistent_float[O("fPowerBarYStartPercent")] * 100.f);
-                    fgdl->AddText(ImVec2(px + 12, pt + 10), IM_COL32(255, 255, 255, 255), buf);
-
-                    snprintf(buf, sizeof(buf), "H: %.2f%%", (persistent_float[O("fPowerBarYEndPercent")] - persistent_float[O("fPowerBarYStartPercent")]) * 100.f);
-                    fgdl->AddText(ImVec2(px + 12, pt + 30), IM_COL32(255, 255, 255, 255), buf);
-                }
-            }
-            // ========================================================
-
-            // ── INFORMASI ──
-            Dummy(ImVec2(0, 20));
-            TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), O("Auto play will automatically"));
-            TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), O("aim and shoot for you"));
-            break;
-        }
-        
-        case 2: {
-            Dummy(ImVec2(0, 10));
-            need_save |= ToggleSwitch(O("Enable Auto Queue"), &persistent_bool[O("bAutoQueue")]);
-            Dummy(ImVec2(0, 20));
-            
-            TextColored(ImVec4(0.75f, 0.75f, 0.8f, 1.0f), O("Mode"));
-            Dummy(ImVec2(0, 8));
-            PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
-            PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(15, 12));
-            PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.12f, 0.12f, 0.15f, 1.0f));
-            PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.16f, 0.16f, 0.20f, 1.0f));
-            SetNextItemWidth(GetContentRegionAvail().x);
-            need_save |= Combo("##mode", &persistent_int["iAutoQueue_Mode"], "Last Selected\0Smart\0");
-            PopStyleColor(2);
-            PopStyleVar(2);
-            
-            if (persistent_int["iAutoQueue_Mode"] == 1) {
-                Dummy(ImVec2(0, 15));
-                TextColored(ImVec4(0.75f, 0.75f, 0.8f, 1.0f), O("Bet Percent"));
-                Dummy(ImVec2(0, 8));
-                PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
-                PushStyleVar(ImGuiStyleVar_GrabRounding, 10.0f);
-                PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.12f, 0.12f, 0.15f, 1.0f));
-                PushStyleColor(ImGuiCol_SliderGrab, ImVec4(0.3f, 0.6f, 0.95f, 1.0f));
-                PushStyleColor(ImGuiCol_SliderGrabActive, ImVec4(0.4f, 0.7f, 1.0f, 1.0f));
-                SetNextItemWidth(GetContentRegionAvail().x);
-                need_save |= SliderInt("##betpercent", &persistent_int["iAutoQueue_BetPercent"], 1, 100, "%d%%");
-                PopStyleColor(3);
-                PopStyleVar(2);
-            }
-            
-            Dummy(ImVec2(0, 25));
-            TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), O("You will be auto queued to"));
-            TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), O("the last game mode you played"));
-            break;
-        }
-    }
-    
-    if (need_save) save_persistence();
-    
-    EndChild();
-    PopStyleVar();
-    PopStyleColor();
-}
 
 INLINE void DrawMenu(ImGuiIO& io) {
     if (!g_Token.empty() && !g_Auth.empty() && g_Token == g_Auth) {
@@ -631,36 +282,98 @@ INLINE void DrawMenu(ImGuiIO& io) {
             jump_buffer_active = 0;
         }
 
-        float targetAlpha = g_menu.isOpen ? 1.0f : 0.0f;
         if (g_menu.isOpen) {
-            g_menu.menuAlpha += (1.0f - g_menu.menuAlpha) * io.DeltaTime * 12.0f;
+            g_menu.menuAlpha += (1.0f - g_menu.menuAlpha) * io.DeltaTime * 15.0f;
         } else {
-            g_menu.menuAlpha = 0.0f;
+            g_menu.menuAlpha -= g_menu.menuAlpha * io.DeltaTime * 20.0f;
         }
 
         if (g_menu.menuAlpha > 0.01f) {
-            float winW = 800.0f;
-            float winH = 580.0f;
+            static ImVec2 menuPos = ImVec2(-1, -1);
+            
+            // --- UBAH UKURAN DI SINI (SEKARANG LEBIH KECIL) ---
+            float winW = 800.0f;  // Dulu 1200
+            float winH = 700.0f;  // Dulu 1050
+            
+            if (menuPos.x < 0) {
+                menuPos = ImVec2((Width - winW) * 0.5f, (Height - winH) * 0.5f);
+            }
             
             SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_Always);
-            SetNextWindowPos(ImVec2(Width / 2.0f, Height / 2.0f), ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
+            SetNextWindowPos(menuPos, ImGuiCond_Always);
             
-            PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.13f, 0.13f, 0.16f, g_menu.menuAlpha));
-            PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f);
+            PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.80f * g_menu.menuAlpha));
+            PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
             PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
             PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
             PushStyleVar(ImGuiStyleVar_Alpha, g_menu.menuAlpha);
             
-            ImGuiWindowFlags winFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+            ImGuiWindowFlags winFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize;
             
-            if (Begin(O("##MainMenu"), &g_menu.isOpen, winFlags)) {
+            if (Begin(O("##MinimalMenu"), &g_menu.isOpen, winFlags)) {
                 ImDrawList* dl = GetWindowDrawList();
                 ImVec2 winPos = GetWindowPos();
                 
-                dl->AddRect(winPos, ImVec2(winPos.x + winW, winPos.y + winH), IM_COL32(60, 60, 70, (int)(150 * g_menu.menuAlpha)), 16.0f, 0, 1.5f);
+                dl->AddRect(winPos, ImVec2(winPos.x + winW, winPos.y + winH), IM_COL32(255, 255, 255, (int)(220 * g_menu.menuAlpha)), 0.0f, 0, 4.0f);
                 
-                DrawSidebar(g_menu.sidebarWidth, winH);
-                DrawContentArea(g_menu.sidebarWidth, winW, winH);
+                float closeX = winPos.x + 20;
+                float closeY = winPos.y + 20;
+                float closeSize = 40.0f;
+                bool closeHovered = IsMouseHoveringRect(ImVec2(closeX - 5, closeY - 5), ImVec2(closeX + closeSize + 5, closeY + closeSize + 5));
+                
+                ImU32 xColor = closeHovered ? IM_COL32(255, 60, 60, 255) : IM_COL32(255, 255, 255, 220);
+                dl->AddLine(ImVec2(closeX, closeY), ImVec2(closeX + closeSize, closeY + closeSize), xColor, 4.0f);
+                dl->AddLine(ImVec2(closeX + closeSize, closeY), ImVec2(closeX, closeY + closeSize), xColor, 4.0f);
+                
+                SetCursorPos(ImVec2(15, 15));
+                if (InvisibleButton(O("##CloseX"), ImVec2(50, 50))) g_menu.isOpen = false;
+                
+                SetWindowFontScale(1.2f);
+                ImVec2 titleSize = CalcTextSize(O("AIM X"));
+                float titleX = winPos.x + (winW - titleSize.x) * 0.5f;
+                float titleY = winPos.y + 30;
+                dl->AddText(ImVec2(titleX, titleY), IM_COL32(255, 255, 255, (int)(255 * g_menu.menuAlpha)), O("AIM X"));
+                SetWindowFontScale(1.0f);
+                
+                SetCursorPos(ImVec2(80, 0));
+                InvisibleButton(O("##DragArea"), ImVec2(winW - 120, 80));
+                if (IsItemActive() && IsMouseDragging(0)) {
+                    menuPos.x += io.MouseDelta.x;
+                    menuPos.y += io.MouseDelta.y;
+                    menuPos.x = ImClamp(menuPos.x, 0.0f, (float)Width - winW);
+                    menuPos.y = ImClamp(menuPos.y, 0.0f, (float)Height - winH);
+                }
+                
+                SetCursorPos(ImVec2(40, 100));
+                BeginChild(O("##Content"), ImVec2(winW - 80, winH - 150), false, ImGuiWindowFlags_NoScrollbar);
+                
+                bool need_save = false;
+                
+                need_save |= BigToggle(O("Lines"), &persistent_bool[O("bESP_DrawPredictionLine")]);
+                need_save |= BigToggle(O("Pockets"), &persistent_bool[O("bESP_DrawPockets")]);
+                need_save |= BigToggle(O("States"), &persistent_bool[O("bESP_DrawPocketsShotState")]);
+                
+                Dummy(ImVec2(0, 30));
+                
+                float groupPadding = 30.0f;
+                ImVec2 curPos = GetCursorScreenPos();
+                ImVec2 groupStart = ImVec2(curPos.x + groupPadding, curPos.y);
+                float groupW = GetContentRegionAvail().x - (groupPadding * 2);
+                float groupH = 220.0f; // Dikurangi karena layar lebih kecil
+                
+                dl->AddRect(groupStart, ImVec2(groupStart.x + groupW, groupStart.y + groupH), IM_COL32(255, 255, 255, 180), 0.0f, 0, 3.0f);
+                
+                Dummy(ImVec2(0, 20));
+                Indent(groupPadding + 10.0f);
+                PushItemWidth(groupW - 60.0f); // Disesuaikan
+                need_save |= BigToggle(O("Auto Play"), &persistent_bool[O("bAutoPlay")]);
+                need_save |= BigToggle(O("Auto Queue"), &persistent_bool[O("bAutoQueue")]);
+                PopItemWidth();
+                Unindent(groupPadding + 10.0f);
+                
+                if (need_save) save_persistence();
+                
+                EndChild();
             }
             End();
             
@@ -674,17 +387,15 @@ static void DrawFloatingButton(ImGuiIO& io) {
     static ImVec2 buttonPos = ImVec2(80, 60);
     static bool isDragging = false;
     static float hoverAnim = 0.0f;
+    static GLuint logo_tex = LoadTextureFromMemory(logo_8bpp_png, logo_8bpp_png_len);
     
-    float buttonRadius = 38.0f;
+    float buttonRadius = 75.0f;  // Dipangkas dari 150 jadi 75 (lebih kecil dan proporsional)
     float buttonSize = buttonRadius * 2.0f;
-    float textWidth = 140.0f;
-    float totalWidth = buttonSize + textWidth + 15.0f;
-    float totalHeight = buttonSize + 4.0f;
     
     bool isHovered = false;
     
     SetNextWindowPos(buttonPos, ImGuiCond_Always);
-    SetNextWindowSize(ImVec2(totalWidth, totalHeight), ImGuiCond_Always);
+    SetNextWindowSize(ImVec2(buttonSize + 10, buttonSize + 10), ImGuiCond_Always);
     PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
     PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -692,55 +403,47 @@ static void DrawFloatingButton(ImGuiIO& io) {
     if (Begin(O("##FloatBtn"), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
         ImDrawList* dl = GetWindowDrawList();
         
-        ImVec2 center = ImVec2(buttonPos.x + buttonRadius + 2, buttonPos.y + buttonRadius + 2);
+        ImVec2 center = ImVec2(buttonPos.x + buttonRadius + 5, buttonPos.y + buttonRadius + 5);
         
-        SetCursorPos(ImVec2(0, 0));
-        InvisibleButton(O("##FloatBtnHit"), ImVec2(totalWidth, totalHeight));
+        // --- PERBAIKAN 1: Hitbox jangan sama besar dengan gambar ---
+        float hitboxSize = 60.0f; // Ukuran sensitif sentuhan (lebih kecil dari gambar 150px)
+        SetCursorPos(ImVec2((buttonSize + 10 - hitboxSize) * 0.5f, (buttonSize + 10 - hitboxSize) * 0.5f));
+        InvisibleButton(O("##FloatBtnHit"), ImVec2(hitboxSize, hitboxSize));
+        
         isHovered = IsItemHovered();
         
         float targetHover = isHovered ? 1.0f : 0.0f;
         hoverAnim += (targetHover - hoverAnim) * io.DeltaTime * 10.0f;
         
-        float currentRadius = buttonRadius + hoverAnim * 4.0f;
+        float currentRadius = buttonRadius + hoverAnim * 4.0f; // Animasi membesar lebih halus
         
-        dl->AddCircleFilled(ImVec2(center.x + 2, center.y + 3), currentRadius, IM_COL32(0, 0, 0, 60), 32);
-        dl->AddCircleFilled(center, currentRadius, IM_COL32(30, 85, 160, 255), 32);
-        dl->AddCircleFilled(center, currentRadius - 4, IM_COL32(40, 100, 180, 255), 32);
-        dl->AddCircle(center, currentRadius, IM_COL32(70, 150, 230, (int)(200 + 55 * hoverAnim)), 32, 2.5f);
+        ImVec2 logoMin = ImVec2(center.x - currentRadius, center.y - currentRadius);
+        ImVec2 logoMax = ImVec2(center.x + currentRadius, center.y + currentRadius);
+        dl->AddImage((void*)(intptr_t)logo_tex, logoMin, logoMax);
         
-        float iconSize = 12.0f;
-        ImU32 iconColor = IM_COL32(255, 255, 255, 255);
-        
-        if (g_menu.isOpen) {
-            dl->AddLine(ImVec2(center.x - iconSize, center.y - iconSize), ImVec2(center.x + iconSize, center.y + iconSize), iconColor, 3.5f);
-            dl->AddLine(ImVec2(center.x + iconSize, center.y - iconSize), ImVec2(center.x - iconSize, center.y + iconSize), iconColor, 3.5f);
-        } else {
-            float barW = 14.0f;
-            float barH = 3.0f;
-            float gap = 6.0f;
-            dl->AddRectFilled(ImVec2(center.x - barW, center.y - gap - barH), ImVec2(center.x + barW, center.y - gap), iconColor, 2.0f);
-            dl->AddRectFilled(ImVec2(center.x - barW, center.y - barH * 0.5f), ImVec2(center.x + barW, center.y + barH * 0.5f), iconColor, 2.0f);
-            dl->AddRectFilled(ImVec2(center.x - barW, center.y + gap), ImVec2(center.x + barW, center.y + gap + barH), iconColor, 2.0f);
+        if (isHovered) {
+            dl->AddCircle(center, currentRadius + 3, IM_COL32(255, 255, 255, (int)(100 * hoverAnim)), 32, 2.0f);
         }
         
-        float textX = buttonPos.x + buttonSize + 12.0f;
-        float textY = buttonPos.y + (totalHeight - 38.0f) * 0.5f;
-        dl->AddText(ImVec2(textX, textY), IM_COL32(70, 160, 255, 255), O("Cm"));
-        dl->AddText(ImVec2(textX, textY + 24.0f), IM_COL32(180, 180, 190, 255), O("Engine"));
-        
-        if (IsItemActive() && IsMouseDragging(0)) {
+        // --- PERBAIKAN 2: Logika Drag & Klik ---
+        bool isHeld = IsItemActive(); // Apakah sedang ditekan?
+        bool isDraggingNow = isHeld && IsMouseDragging(0); // Apakah sedang ditarik?
+
+        if (isDraggingNow) {
             isDragging = true;
             buttonPos.x += io.MouseDelta.x;
             buttonPos.y += io.MouseDelta.y;
-            buttonPos.x = ImClamp(buttonPos.x, 0.0f, (float)Width - totalWidth);
-            buttonPos.y = ImClamp(buttonPos.y, 0.0f, (float)Height - totalHeight);
+            buttonPos.x = ImClamp(buttonPos.x, 0.0f, (float)Width - buttonSize - 10);
+            buttonPos.y = ImClamp(buttonPos.y, 0.0f, (float)Height - buttonSize - 10);
         }
         
-        if (IsItemHovered() && IsMouseReleased(0) && !isDragging) {
+        // Hanya buka menu jika TIDAK sedang drag (Tap murni)
+        if (isHeld && IsMouseReleased(0) && !isDragging) {
             g_menu.isOpen = !g_menu.isOpen;
         }
         
-        if (!IsItemActive()) isDragging = false;
+        // Reset status drag saat tombol dilepas
+        if (!isHeld) isDragging = false;
     }
     End();
     
@@ -779,8 +482,8 @@ INLINE void DrawLogin(ImGuiIO& io) {
     dl->AddRectFilled(winPos, ImVec2(winPos.x + cardW, winPos.y + 20), IM_COL32(35, 95, 170, 255), 20.0f, ImDrawFlags_RoundCornersTop);
 
     SetWindowFontScale(1.4f);
-    ImVec2 titleSize = CalcTextSize("GLASS ENGINE");
-    dl->AddText(ImVec2(winPos.x + (cardW - titleSize.x) * 0.5f, winPos.y + 30), IM_COL32(255, 255, 255, 255), "GLASS ENGINE");
+    ImVec2 titleSize = CalcTextSize("AIM X");
+    dl->AddText(ImVec2(winPos.x + (cardW - titleSize.x) * 0.5f, winPos.y + 30), IM_COL32(255, 255, 255, 255), "AIM X");
     SetWindowFontScale(1.0f);
     
     ImVec2 subSize = CalcTextSize("Premium 8 Ball Pool Mod");
