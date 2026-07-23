@@ -282,7 +282,7 @@ INLINE void DrawESP(ImDrawList* draw) {
 
         if (persistent_bool[O("bESP_DrawPocketsShotState")]) {
             for (int i = 0; i < 6; i++) {
-                if (gPrediction->guiData.pocketStatus[i]) {
+                if (Prediction::pocketStatus[i]) {
                     auto screenPos = WorldToScreen(pockets[i]);
                     draw->AddCircle(ImVec2(screenPos.x, screenPos.y), 30, GREEN, 0, 5.f);
                 }
@@ -388,8 +388,8 @@ static void DrawContentArea(float sidebarW, float winW, float winH) {
         case 0: {
             Dummy(ImVec2(0, 10));
             need_save |= ToggleSwitch(O("Draw Prediction Lines"), &persistent_bool[O("bESP_DrawPredictionLine")]);
-            need_save |= ToggleSwitch(O("Draw Pockets"), &persistent_bool[O("bESP_DrawPockets")]);
-            need_save |= ToggleSwitch(O("Draw Shot State"), &persistent_bool[O("bESP_DrawPocketsShotState")]);
+       //     need_save |= ToggleSwitch(O("Draw Pockets"), &persistent_bool[O("bESP_DrawPockets")]);
+            need_save |= ToggleSwitch(O("Draw Pockets"), &persistent_bool[O("bESP_DrawPocketsShotState")]);
             TextColored(ImVec4(0.75f, 0.75f, 0.8f, 1.0f), O("Line Thickness"));
             Dummy(ImVec2(0, 8));
             {
