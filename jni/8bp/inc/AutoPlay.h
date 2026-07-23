@@ -1,6 +1,6 @@
 #pragma once
 
-//#include "Prediction.fast.h"
+#include "Prediction.fast.h"
 #include <imgui/imgui.h>
 #include <algorithm>
 
@@ -61,6 +61,49 @@ bool IsShotValid() {
 
     return true;
 }
+
+/* void UpdatePowerSlider() {
+    static bool isSearchingExtraPower = false;
+    static float savedLowestPower = 0.0f;
+    static ImVec2 savedLowestPos = ImVec2(0, 0);
+    static ImVec2 bestValidPos = ImVec2(0, 0);
+
+    if (powerSlider.state != powerSlider.State::MOVING) {
+        isSearchingExtraPower = false;
+        return;
+    }
+
+    float currentPower = sharedGameManager.mVisualCue().getShotPower(true);
+    bool isValid = IsShotValid();
+
+    if (!isSearchingExtraPower) {
+        if (isValid && currentPower < 666.0f) {
+            isSearchingExtraPower = true;
+            savedLowestPower = currentPower;
+            savedLowestPos = powerSlider.CurrentPos;
+            bestValidPos = powerSlider.CurrentPos;
+            LOGI("Found valid shot at %f, searching for more power...", currentPower);
+        }
+    } else {
+        if (isValid) bestValidPos = powerSlider.CurrentPos;
+
+        if (!isValid) {
+            float midX = bestValidPos.x;// + (powerSlider.CurrentPos.x - savedLowestPos.x) * 0.5f;
+            float midY = bestValidPos.y;// + (powerSlider.CurrentPos.y - savedLowestPos.y) * 0.5f;
+            
+            powerSlider.CurrentPos = ImVec2(midX, midY);
+            NativeTouchesMove(powerSlider.TouchIndex, midX, midY);
+            
+            LOGI("Shot invalid at %f. Backing off and ending.", currentPower);
+            powerSlider.state = powerSlider.State::ENDING;
+            isSearchingExtraPower = false;
+        } else if (currentPower >= savedLowestPower + 80.0f) {
+            LOGI("Reached +80 power (%f -> %f). Forcefully ending.", savedLowestPower, currentPower);
+            powerSlider.state = powerSlider.State::ENDING;
+            isSearchingExtraPower = false;
+        }
+    }
+} */
 
 Point2D lastFailedCuePos = { -1000.0, -1000.0 };
 namespace AutoPlay {
@@ -555,5 +598,14 @@ namespace AutoPlay {
                 state = IDLE;
             }
         }
+
+        /* if (bAutoPlaying && sharedGameManager.mStateManager().isPlayerTurn()) {
+            if (powerSlider.Active) {
+                UpdateTouchSimulation();
+                powerSlider.Update();
+            } else Start();
+        } */
+
+        // if (!bAutoPlaying && powerSlider.Active) powerSlider.Update(); // for TestAutoPlay
     }
 };
