@@ -169,7 +169,7 @@ namespace AutoPlay {
         bool foundShot = false;
         
         // Scan 10 angles per frame
-        while (steps < 16 && currentScanAngle < maxAngle) {
+        while (steps < 12 && currentScanAngle < maxAngle) {
             double angle = currentScanAngle;
             currentScanAngle += angleStep;
             steps++;
