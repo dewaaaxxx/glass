@@ -92,12 +92,12 @@ namespace AutoPlay {
     }
 
     void takeShot(double angle, double power) {
-        setAimAngle(angle);
-        gPrediction->forceFullSimulation = true;
-        gPrediction->determineShotResult(false, angle, power);
-        gPrediction->forceFullSimulation = false;
-
         sharedGameManager.mVisualCue().mPower(ShotPowerToPower(power));
+    
+        setAimAngle(angle);
+        
+        gPrediction->determineShotResult(false, angle, power);
+        
         M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
     }
     
@@ -178,7 +178,9 @@ namespace AutoPlay {
 
             std::vector<double> powers = {666.0, 466.0, 266.0, 100.0};
             for (double power : powers) {
+                gPrediction->forceFullSimulation = true;
                 gPrediction->determineShotResult(true, angle, power, sharedGameManager.getShotSpin());
+                gPrediction->forceFullSimulation = false;
                 
                 bool isPotentiallyValid = false;
                 int targetIdx = -1;
@@ -376,7 +378,9 @@ namespace AutoPlay {
         bool foundShot = false;
         for (const auto& cand : candidates) {
             double angle = NumberUtils::normalizeDoublePrecision(normalizeAngle(cand.angle));
+            gPrediction->forceFullSimulation = true;
             gPrediction->determineShotResult(true, angle, cand.power, sharedGameManager.getShotSpin(), cand);
+            gPrediction->forceFullSimulation = false;
             
             if (!gPrediction->firstHitIsTarget) continue;
 
