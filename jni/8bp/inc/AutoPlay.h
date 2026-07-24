@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include "ScreenTable.h"
-#include "ButtonClicker.h"
+#include "mod/ButtonClicker.h"
 
 using namespace ImGui;
 
@@ -234,9 +234,15 @@ namespace AutoPlay {
         lastSetAngle = angle;
         sharedGameManager.mVisualCue().mVisualGuide().mAimAngle(angle);
     }
+    
+    void setShotPower(double power) {
+        lastSetPower = power;
+        sharedGameManager.mVisualCue().setShotPower(power);
+    }
 
     void takeShot(double angle, double power) {
         setAimAngle(angle);
+        setShotPower(power);
         gPrediction->determineShotResult(false, angle, power);
         sharedGameManager.mVisualCue().mPower(ShotPowerToPower(power));
         M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
@@ -253,6 +259,7 @@ namespace AutoPlay {
     
     void Shoot(double angle, double power = 0.f) {
         setAimAngle(angle);
+        setShotPower(power);
         gPrediction->determineShotResult(false, angle, power);
 
         bool nominating = false;
