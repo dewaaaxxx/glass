@@ -205,6 +205,7 @@ Point2D lastFailedCuePos = { -1000.0, -1000.0 };
 
 namespace AutoPlay {
     double lastSetAngle = 0.f;
+    double lastSetPower = 0.f;
     bool didSetAngle = false;
     bool bAutoPlaying = false;
     double luxuryPrecisionModifier = 1.0;  // Adjustable precision for luxury mode
