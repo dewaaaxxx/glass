@@ -93,7 +93,9 @@ namespace AutoPlay {
 
     void takeShot(double angle, double power) {
         setAimAngle(angle);
+        gPrediction->forceFullSimulation = true;
         gPrediction->determineShotResult(false, angle, power);
+        gPrediction->forceFullSimulation = false;
 
         sharedGameManager.mVisualCue().mPower(ShotPowerToPower(power));
         M(void, libmain + 0x2dc0c58, void*)(F(void*, sharedGameManager + 0x3b0));
@@ -169,12 +171,12 @@ namespace AutoPlay {
         bool foundShot = false;
         
         // Scan 10 angles per frame
-        while (steps < 12 && currentScanAngle < maxAngle) {
+        while (steps < 16 && currentScanAngle < maxAngle) {
             double angle = currentScanAngle;
             currentScanAngle += angleStep;
             steps++;
 
-            std::vector<double> powers = {666.0, 566.0, 466.0, 366.0, 266.0, 166.0, 100.0, 80.0};
+            std::vector<double> powers = {666.0, 466.0, 266.0, 100.0};
             for (double power : powers) {
                 gPrediction->determineShotResult(true, angle, power, sharedGameManager.getShotSpin());
                 
@@ -300,7 +302,6 @@ namespace AutoPlay {
 
         double startingAngle = sharedGameManager.mVisualCue().mVisualGuide().mAimAngle();
         
-        gPrediction->determineShotResult(true, startingAngle);
         std::vector<int> startingPottedBalls;
         for (int i = 0; i < gPrediction->guiData.ballsCount; i++) {
             Prediction::Ball& ball = gPrediction->guiData.balls[i];
@@ -375,7 +376,7 @@ namespace AutoPlay {
         bool foundShot = false;
         for (const auto& cand : candidates) {
             double angle = NumberUtils::normalizeDoublePrecision(normalizeAngle(cand.angle));
-            gPrediction->determineShotResult(false, angle, cand.power, sharedGameManager.getShotSpin(), cand);
+            gPrediction->determineShotResult(true, angle, cand.power, sharedGameManager.getShotSpin(), cand);
             
             if (!gPrediction->firstHitIsTarget) continue;
 
