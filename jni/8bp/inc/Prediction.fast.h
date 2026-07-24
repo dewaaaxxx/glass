@@ -116,7 +116,6 @@ float Prediction::shotResult[MAX_SHOT_RESULT_SIZE];
 static double prevAngle = 0.0;
 static double prevPower = 0.0;
 static Point2D prevSpin = {0.0, 0.0};
-static bool prevIsAuto = false;   // ← adaugă asta
 
 // constexpr double dword_35B7988 = 0.54;
 // constexpr double dword_35B7978 = 0.804;
@@ -124,13 +123,8 @@ static bool prevIsAuto = false;   // ← adaugă asta
 /* PREDICTION PUBLIC METHODS ==================================================================== */
 
 bool Prediction::determineShotResult(bool isAuto, double shotAngle, double shotPower, Vec2d shotSpin, Candidate cand) { // returns isShouldReDraw
-        if (shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin && isAuto == prevIsAuto)
-        return false;  // ← include isAuto în comparație
-
-    prevAngle = shotAngle;
-    prevPower = shotPower;
-    prevSpin  = shotSpin;
-    prevIsAuto = isAuto;   // ← salvează și asta
+    if (shotAngle == prevAngle && shotPower == prevPower && shotSpin == prevSpin) return false;
+    prevAngle = shotAngle, prevPower = shotPower, prevSpin = shotSpin;
 
     this->m_candidate = cand;
     fastCalc = isAuto;
